@@ -1,0 +1,6 @@
+{
+  "files.associations": {
+    "*.template": "html",
+    "stdio.h": "c"
+  }
+}
