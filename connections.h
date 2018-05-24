@@ -88,7 +88,9 @@ int readMsg(long fd, message_t *msg);
  * \param fd     descrittore della connessione
  * \param msg    puntatore al messaggio da inviare
  *
- * \return <=0 se c'e' stato un errore
+ * \return <0 se si è verificato un errore,
+ *         =0 se il socket si è chiuso,
+ *         >0 se l'operazione ha avuto successo
  */
 int sendRequest(long fd, message_t *msg);
 
@@ -98,7 +100,9 @@ int sendRequest(long fd, message_t *msg);
  * \param fd     descrittore della connessione
  * \param msg    puntatore al messaggio da inviare
  *
- * \return <=0 se c'e' stato un errore
+ * \return <0 se si è verificato un errore,
+ *         =0 se il socket si è chiuso,
+ *         >0 se l'operazione ha avuto successo
  */
 int sendData(long fd, message_data_t *msg);
 

@@ -71,7 +71,11 @@ int chash_get(chash_t *ht, const char *key, chash_get_callback cb, void *ud) {
   CHECK_RET
 
   if(ht->entries[idx] == NULL) {
+    ret = pthread_rwlock_unlock(&(ht->lock));
+    CHECK_RET
+
     cb(key, NULL, ud);
+    return 0;
   } else {
     chash_entry_t *ptr = ht->entries[idx];
     while(ptr != NULL && strcmp(ptr->key, key) != 0) {
@@ -79,7 +83,11 @@ int chash_get(chash_t *ht, const char *key, chash_get_callback cb, void *ud) {
     }
 
     if(ptr == NULL) {
+      ret = pthread_rwlock_unlock(&(ht->lock));
+      CHECK_RET
+
       cb(key, NULL, ud);
+      return 0;
     } else {
       ret = pthread_mutex_lock(&(ptr->mtx));
       CHECK_RET
@@ -210,6 +218,91 @@ int chash_set(chash_t *table, const char *key, void *value, void **oldValue) {
       } else {
         ptr->value = value;
       }
+    }
+  }
+
+end:
+  ret = pthread_rwlock_unlock(&(table->lock));
+  CHECK_RET
+  return 0;
+}
+
+int chash_set_if_empty(chash_t *table, const char *key, void *value) {
+  if(table == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  size_t idx = hash(key);
+  size_t keyLen = strlen(key);
+  int ret = pthread_rwlock_wrlock(&(table->lock));
+  CHECK_RET
+  if(table->entries[idx] == NULL) {
+    if(value == NULL) {
+      goto end;
+    }
+    chash_entry_t *newEntry = malloc(sizeof(chash_entry_t));
+    if(newEntry == NULL) {
+      ret = pthread_rwlock_unlock(&(table->lock));
+      if(ret != 0) {
+        errno = ret;
+      }
+      return -1;
+    }
+
+    newEntry->key = malloc(sizeof(char) * keyLen);
+    if(newEntry->key == NULL) {
+      ret = pthread_rwlock_unlock(&(table->lock));
+      if(ret != 0) {
+        errno = ret;
+      }
+      return -1;
+    }
+
+    memcpy(newEntry->key, key, sizeof(char) * keyLen);
+    newEntry->value = value;
+    newEntry->next = NULL;
+
+    table->entries[idx] = newEntry;
+    table->numkeys++;
+  } else {
+    chash_entry_t  *prev = NULL;
+    chash_entry_t *ptr = table->entries[idx];
+    while(ptr != NULL && strcmp(ptr->key, key) != 0) {
+      prev = ptr;
+      ptr = ptr->next;
+    }
+
+    if(ptr == NULL) {
+      if(value == NULL) {
+        goto end;
+      }
+      
+      chash_entry_t *newEntry = malloc(sizeof(chash_entry_t));
+      if(newEntry == NULL) {
+        ret = pthread_rwlock_unlock(&(table->lock));
+        CHECK_RET
+        return -1;
+      }
+
+      newEntry->key = malloc(sizeof(char) * keyLen);
+      if(newEntry->key == NULL) {
+        ret = pthread_rwlock_unlock(&(table->lock));
+        CHECK_RET
+        return -1;
+      }
+      memcpy(newEntry->key, key, sizeof(char) * keyLen);
+      newEntry->value = value;
+      newEntry->next = table->entries[idx];
+      ret = pthread_mutex_init(&(newEntry->mtx), NULL);
+      CHECK_RET
+
+      table->entries[idx] = newEntry;
+      table->numkeys++;
+    } else {
+      ret = pthread_rwlock_unlock(&(table->lock));
+      CHECK_RET
+      return 1;
     }
   }
 

@@ -87,6 +87,18 @@ int chash_get_all(chash_t *table, chash_get_callback cb, void *ud);
 int chash_set(chash_t *table, const char *key, void *value, void **oldValue);
 
 /**
+ * \brief Imposta un valore nella hashtable solo se non sono già presenti altri
+ *        valori con la stessa chiave
+ * 
+ * \param table La hashtable in cui impostare il valore
+ * \param key La chiave a cui impostare il valore
+ * \param value Il valore da impostare.
+ * \return 0 se il valore è stato inserito, 1 se il valore era già presente,
+ *           -1 ed errno impostati se si sono verificati errori.
+ */
+int chash_set_if_empty(chash_t *table, const char *key, void *value);
+
+/**
  * \brief Consente di ottenere tutte le chiavi presenti nella tabella
  * 
  * \param table La tabella da cui estrarre le chiavi
