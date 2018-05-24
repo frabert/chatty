@@ -25,7 +25,7 @@ struct statistics {
 
 
 /**
- * @function printStats
+ * @fn printStats
  * @brief Stampa le statistiche nel file passato come argomento
  *
  * @param fout descrittore del file aperto in append.

@@ -42,12 +42,12 @@ DIR_PATH        = /tmp/chatty
 
 CC		=  gcc
 AR              =  ar
-CFLAGS	        += -std=c99 -Werror -Wall -pedantic -g -DMAKE_VALGRIND_HAPPY
+CFLAGS	        += -std=gnu99 -Wall -pedantic -g -DMAKE_VALGRIND_HAPPY
 ARFLAGS         =  rvs
 INCLUDES	= -I.
 LDFLAGS 	= -L.
 OPTFLAGS	= #-O3 
-LIBS            = -pthread -lcfgparse -lcqueue -lchash
+LIBS            = -pthread -lcfgparse -lcqueue -lchash -lccircbuf
 
 # aggiungere qui altri targets se necessario
 TARGETS		= chatty        \
@@ -55,7 +55,7 @@ TARGETS		= chatty        \
 
 
 # aggiungere qui i file oggetto da compilare
-OBJECTS		= chatty.o
+OBJECTS		= chatty.o libcfgparse.a libcqueue.a libchash.a libccircbuf.a connections.o
 
 # aggiungere qui gli altri include 
 INCLUDE_FILES   = connections.h \
@@ -80,7 +80,7 @@ INCLUDE_FILES   = connections.h \
 all: $(TARGETS)
 
 
-chatty: chatty.o libchatty.a libcfgparse.a libcqueue.a libchash.a $(INCLUDE_FILES)
+chatty: chatty.o libchatty.a $(INCLUDE_FILES)
 	$(CC) $(CFLAGS) $(INCLUDES) $(OPTFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 client: client.o connections.o message.h
@@ -93,6 +93,9 @@ libcqueue.a: cqueue.o
 	$(AR) $(ARFLAGS) $@ $^
 
 libchash.a: chash.o
+	$(AR) $(ARFLAGS) $@ $^
+
+libccircbuf.a: ccircbuf.o
 	$(AR) $(ARFLAGS) $@ $^
 
 ############################ non modificare da qui in poi

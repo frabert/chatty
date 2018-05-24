@@ -11,9 +11,23 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "connections.h"
 
+/**
+ * \brief Legge esattamente len byte dal descrittore fd
+ * 
+ * \param fd Il descrittore da cui leggere
+ * \param buf Buffer in cui mettere i dati letti
+ * \param len Numero di byte da leggere
+ * \return ssize_t 1 in caso di successo, -1 in caso di errore,
+ *                 0 se il descrittore è stato chiuso prima della lettura completa
+ */
 static ssize_t readn(long fd, void *buf, size_t len) {
+  if(buf == NULL) {
+    return 1;
+  }
+
   size_t offset = 0;
   while(offset < len) {
     ssize_t r = read(fd, buf + offset, len - offset);
@@ -28,7 +42,20 @@ static ssize_t readn(long fd, void *buf, size_t len) {
   return 1;
 }
 
+/**
+ * \brief Scrite esattamente len byte sul descrittore fd
+ * 
+ * \param fd Il descrittore su cui scrivere
+ * \param buf Buffer contenente i dati da scrivere
+ * \param len Numero di byte da scrivere
+ * \return ssize_t 1 in caso di successo, -1 in caso di errore,
+ *                 0 se il descrittore è stato chiuso prima della scrittura completa
+ */
 static ssize_t writen(long fd, void *buf, size_t len) {
+  if(buf == NULL) {
+    return 1;
+  }
+
   size_t offset = 0;
   while(offset < len) {
     ssize_t w = write(fd, buf + offset, len - offset);
@@ -54,8 +81,12 @@ int readDataHeader(long fd, message_data_hdr_t *datahdr) {
 int readData(long fd, message_data_t *data) {
   int res;
   if((res = readDataHeader(fd, &(data->hdr))) > 0) {
-    void *buf = malloc(data->hdr->len);
-    if((res = readn(fd, buf, data->hdr->len)) > 0) {
+    void *buf = malloc(data->hdr.len);
+    if(buf == NULL) {
+      return -1;
+    }
+
+    if((res = readn(fd, buf, data->hdr.len)) > 0) {
       data->buf = buf;
     }
     return res;
@@ -73,6 +104,58 @@ int readMsg(long fd, message_t *msg) {
   return res;
 }
 
+/**
+ * \brief Invia un header dati ad un descrittore
+ * 
+ * \param fd Il descrittore a cui inviare l'header
+ * \param datahdr L'header da inviare
+ * \return int Vedi writen
+ */
+static int sendDataHeader(long fd, message_data_hdr_t *datahdr) {
+  return writen(fd, (void*)datahdr, sizeof(message_data_hdr_t));
+}
+
+/**
+ * \brief Invia un header di messaggio ad un descrittore
+ * 
+ * \param fd Il descrittore a cui inviare l'header
+ * \param hdr L'header da inviare
+ * \return int Vedi writen
+ */
+static int sendHeader(long fd, message_hdr_t *hdr) {
+  return writen(fd, (void*)hdr, sizeof(message_hdr_t));
+}
+
+int sendData(long fd, message_data_t *data) {
+  int res = sendDataHeader(fd, &(data->hdr));
+  if(res > 0) {
+    return writen(fd, data->buf, data->hdr.len);
+  } else {
+    return res;
+  }
+}
+
 int sendRequest(long fd, message_t *msg) {
-  
+  int res = sendHeader(fd, &(msg->hdr));
+  if(res > 0) {
+    return sendData(fd, &(msg->data));
+  } else {
+    return res;
+  }
+}
+
+int openConnection(char* path, unsigned int ntimes, unsigned int secs) {
+  int fd_skt;
+  struct sockaddr_un sa;
+  strcpy(sa.sun_path, path);
+  sa.sun_family = AF_UNIX;
+  fd_skt = socket(AF_UNIX,SOCK_STREAM,0);
+  unsigned int tries = 0;
+  while (connect(fd_skt, (struct sockaddr*)&sa, sizeof(sa)) == -1) 
+  {
+    if(tries < ntimes) tries++;
+    else return -1;
+    sleep(secs); 
+  }
+  return fd_skt;
 }

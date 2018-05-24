@@ -6,6 +6,9 @@
  * \brief Hashtable concorrente
  * 
  * L'hashtable è implementata tramite liste di trabocco.
+ * L'accesso concorrente alla tabella è consentito nel caso in cui si tenti
+ * di leggere le chiavi presenti (o il loro numero) o si acceda ad elementi
+ * con chiavi separate. La scrittura della tabella è bloccante.
  * La funzione di hash è stata presa da http://www.cse.yorku.ca/~oz/hash.html
  */
 

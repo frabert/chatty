@@ -70,7 +70,7 @@ typedef struct {
 /* ------ funzioni di utilità ------- */
 
 /**
- * @function setheader
+ * @fn setheader
  * @brief scrive l'header del messaggio
  *
  * @param hdr puntatore all'header
@@ -85,7 +85,7 @@ static inline void setHeader(message_hdr_t *hdr, op_t op, char *sender) {
     strncpy(hdr->sender, sender, strlen(sender)+1);
 }
 /**
- * @function setData
+ * @fn setData
  * @brief scrive la parte dati del messaggio
  *
  * @param msg puntatore al body del messaggio

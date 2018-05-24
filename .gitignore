@@ -1,0 +1,6 @@
+*.a
+*.o
+chatty
+client
+doc/*
+.vscode/*

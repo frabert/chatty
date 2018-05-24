@@ -6,7 +6,9 @@
 
 #include <stdlib.h>
 #include <pthread.h>
+#include <sys/types.h>
 #include <stdint.h>
+#include <string.h>
 #include <errno.h>
 #include "chash.h"
 
@@ -36,7 +38,7 @@ static size_t hash(const char *str) {
   size_t hash = 5381;
   size_t c;
 
-  while (c = *str++)
+  while ((c = *str++))
     hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
 
   return (size_t)(hash % NUM_HASH_ENTRIES);
@@ -124,15 +126,15 @@ int chash_set(chash_t *table, const char *key, void *value, void **oldValue) {
 
   size_t idx = hash(key);
   size_t keyLen = strlen(key);
-  int ret = pthread_rwlock_wrlock(&(ht->lock));
+  int ret = pthread_rwlock_wrlock(&(table->lock));
   CHECK_RET
-  if(ht->entries[idx] == NULL) {
+  if(table->entries[idx] == NULL) {
     if(value == NULL) {
       goto end;
     }
     chash_entry_t *newEntry = malloc(sizeof(chash_entry_t));
     if(newEntry == NULL) {
-      ret = pthread_rwlock_unlock(&(ht->lock));
+      ret = pthread_rwlock_unlock(&(table->lock));
       if(ret != 0) {
         errno = ret;
       }
@@ -141,7 +143,7 @@ int chash_set(chash_t *table, const char *key, void *value, void **oldValue) {
 
     newEntry->key = malloc(sizeof(char) * keyLen);
     if(newEntry->key == NULL) {
-      ret = pthread_rwlock_unlock(&(ht->lock));
+      ret = pthread_rwlock_unlock(&(table->lock));
       if(ret != 0) {
         errno = ret;
       }
@@ -152,14 +154,14 @@ int chash_set(chash_t *table, const char *key, void *value, void **oldValue) {
     newEntry->value = value;
     newEntry->next = NULL;
 
-    ht->entries[idx] = newEntry;
-    ht->numkeys++;
+    table->entries[idx] = newEntry;
+    table->numkeys++;
 
     if(oldValue != NULL) *oldValue = NULL;
 
   } else {
     chash_entry_t  *prev = NULL;
-    chash_entry_t *ptr = ht->entries[idx];
+    chash_entry_t *ptr = table->entries[idx];
     while(ptr != NULL && strcmp(ptr->key, key) != 0) {
       prev = ptr;
       ptr = ptr->next;
@@ -172,38 +174,38 @@ int chash_set(chash_t *table, const char *key, void *value, void **oldValue) {
       
       chash_entry_t *newEntry = malloc(sizeof(chash_entry_t));
       if(newEntry == NULL) {
-        ret = pthread_rwlock_unlock(&(ht->lock));
+        ret = pthread_rwlock_unlock(&(table->lock));
         CHECK_RET
         return -1;
       }
 
       newEntry->key = malloc(sizeof(char) * keyLen);
       if(newEntry->key == NULL) {
-        ret = pthread_rwlock_unlock(&(ht->lock));
+        ret = pthread_rwlock_unlock(&(table->lock));
         CHECK_RET
         return -1;
       }
       memcpy(newEntry->key, key, sizeof(char) * keyLen);
       newEntry->value = value;
-      newEntry->next = ht->entries[ht];
-      ret = pthread_mutex_init(&(newEntry->mtx));
+      newEntry->next = table->entries[idx];
+      ret = pthread_mutex_init(&(newEntry->mtx), NULL);
       CHECK_RET
 
-      ht->entries[idx] = newEntry;
-      ht->numkeys++;
+      table->entries[idx] = newEntry;
+      table->numkeys++;
 
       if(oldValue != NULL) *oldValue = NULL;
     } else {
       if(oldValue != NULL) *oldValue = ptr->value;
       if(value == NULL) {
         if(prev == NULL) {
-          ht->entries[idx] = ptr->next;
+          table->entries[idx] = ptr->next;
         } else {
           prev->next = ptr->next;
         }
         free(ptr->key);
         free(ptr);
-        ht->numkeys--;
+        table->numkeys--;
       } else {
         ptr->value = value;
       }
@@ -211,14 +213,14 @@ int chash_set(chash_t *table, const char *key, void *value, void **oldValue) {
   }
 
 end:
-  ret = pthread_rwlock_unlock(&(ht->lock));
+  ret = pthread_rwlock_unlock(&(table->lock));
   CHECK_RET
   return 0;
 }
 
 static int deinit_elem(chash_entry_t *elem, chash_deinitializer cb) {
   if(elem->next == NULL) {
-    deinit_elem(elem->next);
+    deinit_elem(elem->next, cb);
   }
 
   free(elem->key);
@@ -257,7 +259,7 @@ int chash_deinit(chash_t *table, chash_deinitializer cb) {
 }
 
 int chash_keys(chash_t *ht, char **keys) {
-  if(table == NULL || keys == NULL) {
+  if(ht == NULL || keys == NULL) {
     errno = EINVAL;
     return -1;
   }
@@ -278,8 +280,8 @@ int chash_keys(chash_t *ht, char **keys) {
       chash_entry_t *ptr = ht->entries[i];
       while(ptr != NULL) {
         int len = strlen(ptr->key);
-        *keys[j] = malloc(sizeof(char) * (len + 1));
-        memcpy(*keys[j], ptr->key, len + 1);
+        keys[j] = malloc(sizeof(char) * (len + 1));
+        memcpy(keys[j], ptr->key, len + 1);
 
         ptr = ptr->next;
       }

@@ -111,6 +111,8 @@ int cqueue_push(cqueue_t *cq, void *v) {
 
   ret = pthread_mutex_unlock(&cq->mtx);
   CHECK_RET
+
+  return 0;
 }
 
 int cqueue_pop(cqueue_t *cq, void **elem) {
@@ -146,6 +148,8 @@ int cqueue_pop(cqueue_t *cq, void **elem) {
   CHECK_RET
 
   *elem = res;
+
+  return 0;
 }
 
 int cqueue_size(cqueue_t *cq) {

@@ -23,4 +23,9 @@
                             perror(s); \
                             exit(EXIT_FAILURE); }
 
+#define HANDLE_NULL(x, s) if ((x) == NULL) { \
+                          fprintf(stderr, "%s: %d ", __FILE__, __LINE__); \
+                          perror(s); \
+                          exit(EXIT_FAILURE); }
+
 #endif /* ERRMAN_H_ */

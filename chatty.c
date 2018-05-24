@@ -6,8 +6,8 @@
  * 
  */
 /**
- * @file chatty.c
- * @brief File principale del server chatterbox
+ * \file chatty.c
+ * \brief File principale del server chatterbox
  */
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
@@ -17,22 +17,31 @@
 #include <string.h>
 #include <signal.h>
 #include <pthread.h>
+#include <sys/select.h>
+#include <sys/time.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <string.h>
+#include <time.h>
 
 #include "stats.h"
 #include "cfgparse.h"
 #include "errman.h"
 #include "cqueue.h"
 #include "chash.h"
+#include "ccircbuf.h"
 #include "connections.h"
 
 #define MAX_PATH_LEN 128
-#define SHOULD_EXIT (signalStatus == SIGINT)
+#define SHOULD_EXIT ((signalStatus == SIGINT) || (signalStatus == SIGQUIT) || (signalStatus == SIGTERM))
 
 
 /* struttura che memorizza le statistiche del server, struct statistics 
  * e' definita in stats.h.
  *
  */
+pthread_mutex_t statsMtx;
 struct statistics chattyStats = { 0,0,0,0,0,0,0 };
 
 volatile sig_atomic_t signalStatus = 0;
@@ -57,19 +66,81 @@ struct server_cfg {
  * \brief Rappresenta un utente registrato
  */
 typedef struct client_descriptor {
-    cqueue_t *pending_messages; //< Coda dei messaggi da inviare al client
-    int fd; //< Descrittore del socket al client
+    ccircbuf_t *message_buffer; //< Mantiene la cronologia dei messaggi (tipo: message_t*)
+    long fd; //< Descrittore del socket al client
 } client_descriptor_t;
+
+/**
+ * \struct message_packet
+ * \brief Rappresenta un pacchetto da inviare a un client
+ * 
+ */
+typedef struct message_packet {
+    chash_t *registered_clients; //< Tabella degli utenti registrati (tipo: client_descriptor_t*)
+    message_t message; //< Il messaggio da inviare
+} message_packet_t;
 
 /**
  * \struct worker_thread_payload
  * \brief Dati da passare ai thread come contesto di lavoro
  */
 typedef struct worker_thread_payload {
-    cqueue_t *pending_messages; //< Coda dei messaggi da smistare
-    chash_t *registered_clients; //< Tabella degli utenti registrati
+    cqueue_t *ready_sockets; //< Coda dei socket pronti (tipo: int)
+    chash_t *registered_clients; //< Tabella degli utenti registrati (tipo: client_descriptor_t*)
 } payload_t;
 
+/**
+ * \brief Crea un messaggio d'errore da inviare ad un client
+ * 
+ * \param msg Messaggio da riempire
+ * \param error Tipo di errore
+ * \param receiver Nome del destinatario
+ */
+static void makeErrorMessage(message_t *msg, op_t error, const char *receiver) {
+    memset(msg, 0, sizeof(message_t));
+    msg->hdr.op = error;
+    memcpy(&(msg->data.hdr.receiver), receiver, strlen(receiver));
+}
+
+/**
+ * \brief Instrada un messaggio verso un client
+ * 
+ * \param key Il nome utente del client verso cui instradare il messaggio
+ * \param value Puntatore al descrittore del client verso cui instradare
+ * \param ud Puntatore al pacchetto da instradare
+ */
+static void route_message_to_client(const char *key, void *value, void *ud) {
+    client_descriptor_t *client = (client_descriptor_t*)value;
+    message_packet_t *pkt = (message_packet_t*)ud;
+
+    /* Se il ricevente e il mittente del messaggio coincidessero, si creerebbe una deadlock */
+    assert(pkt->message.hdr.sender == NULL || (strcmp(key, pkt->message.hdr.sender) != 0));
+
+    if(client == NULL) {
+        /* Il messaggio è stato instradato verso un utente non esistente */
+
+        if(pkt->message.hdr.sender == NULL) {
+            /* Il server ha cercato di inviare un messaggio ad un client non esistente, ignoriamo */
+            return;
+        }
+        message_packet_t errorPacket;
+        makeErrorMessage(&(errorPacket.message), OP_NICK_UNKNOWN, key);
+
+        HANDLE_FATAL(chash_get(pkt->registered_clients, pkt->message.hdr.sender, route_message_to_client, &errorPacket), "chash_get");
+    } else {
+        
+        //HANDLE_FATAL(sendRequest(client->fd, &(pkt->message)), "sendRequest");
+    }
+}
+
+/**
+ * \brief Callback che legge le impostazioni
+ * 
+ * \param name Nome del parametro
+ * \param value Valore del parametro
+ * \param ud Puntatore alla struttura che contiene le impostazioni
+ * \return int 0 in caso di successo, -1 se l'impostazione non è valida
+ */
 static int load_cfg(const char *name, const char *value, void *ud) {
     struct server_cfg *cfg = (struct server_cfg *)ud;
     int valueLen = strlen(value);
@@ -110,17 +181,29 @@ static int load_cfg(const char *name, const char *value, void *ud) {
     return 1;
 }
 
+/**
+ * \brief Mostra il messaggio di istruzioni d'uso
+ * 
+ * \param progname Il path dell'eseguibile
+ */
 static void usage(const char *progname) {
     fprintf(stderr, "Il server va lanciato con il seguente comando:\n");
     fprintf(stderr, "  %s -f conffile\n", progname);
 }
 
-/// Legge interamente un file di configurazione e ne effettua il parsing
+/**
+ * \brief Legge interamente un file di configurazione
+ * 
+ * \param file Il file da leggere
+ * \param cfg Struttura dove immagazzinare le impostazioni lette
+ * \return int >= 0 se l'operazione ha avuto successo, -1 altrimenti.
+ */
 static int read_cfg_file(const char *file, struct server_cfg *cfg) {
     FILE *f = fopen(file, "r");
     fseek(f, 0, SEEK_END);
     // Vado fino in fondo al file per sapere quanto è lungo
     long fsize = ftell(f);
+    // Torno all'inizio per leggerlo interamente
     fseek(f, 0, SEEK_SET);
 
     char *string = (char *)malloc(fsize + 1);
@@ -158,18 +241,47 @@ static void setup_signal_handlers() {
     memset(&s, 0, sizeof(s));
     s.sa_handler = signal_handler;
     HANDLE_FATAL(sigaction(SIGINT, &s, NULL), "sigaction");
-    s.sa_handler = SIG_IGN;
+    HANDLE_FATAL(sigaction(SIGQUIT, &s, NULL), "sigaction");
+    HANDLE_FATAL(sigaction(SIGTERM, &s, NULL), "sigaction");
+    HANDLE_FATAL(sigaction(SIGUSR1, &s, NULL), "sigaction");
+    s.sa_handler = SIG_IGN; /* Ignora SIGPIPE */
     HANDLE_FATAL(sigaction(SIGPIPE, &s, NULL), "sigaction");
 }
 
+/**
+ * \brief Funzione eseguita dai thread nel pool
+ * 
+ * \param data Puntatore alla struttura che fornisce il contesto su cui lavorare
+ * \return void* Sempre NULL
+ */
 void *worker_thread(void *data) {
     payload_t *pl = (payload_t*)data;
     while(!SHOULD_EXIT) {
-        message_t msg;
-        while(readMsg(pl->fd, &msg) > 0) {
+        void *elem;
+        int res = cqueue_pop(pl->ready_sockets, &elem);
+        HANDLE_FATAL(res, "cqueue_pop");
 
+        int fd = (int)elem;
+        if(fd == -1) {
+            /*
+             * Segnale speciale di uscita, viene reimmesso in coda
+             * prima di uscire in modo da renderlo disponibile al
+             * prossimo thread in attesa
+             */
+            cqueue_push(pl->ready_sockets, (void*)-1);
+            return NULL;
+        }
+
+        message_t msg;
+        res = readMsg(fd, &msg);
+        if(res == 0) {
+            printf("Client disconnesso\n");
+        } else {
+            printf("Ricevuto messaggio da %s\n", msg.hdr.sender);
         }
     }
+
+    return NULL;
 }
 
 int main(int argc, char *argv[]) {
@@ -191,11 +303,124 @@ int main(int argc, char *argv[]) {
 
     setup_signal_handlers();
 
-    /* Elimina il file socket se fosse già presente */
+    res = pthread_mutex_init(&statsMtx, NULL);
+    HANDLE_FATAL(res, "pthread_mutex_init");
+
+    payload_t payload;
+    memset(&payload, 0, sizeof(payload_t));
+    payload.registered_clients = chash_init();
+    HANDLE_NULL(payload.registered_clients, "chash_init");
+
+    payload.ready_sockets = cqueue_init();
+    HANDLE_NULL(payload.ready_sockets, "cqueue_init");
+
+    pthread_t *threadPool = malloc(sizeof(pthread_t) * cfg.threadsInPool);
+    HANDLE_NULL(threadPool, "malloc");
+
+    int fd_sk, fd_c;
+    struct sockaddr_un sa;
+    fd_set set, rdSet;
+
+    /* Creazione del socket */
+    strncpy(sa.sun_path, cfg.socketPath, MAX_PATH_LEN);
+    sa.sun_family = AF_UNIX;
+    fd_sk = socket(AF_UNIX, SOCK_STREAM, 0);
+    HANDLE_FATAL(fd_sk, "socket");
+    res = bind(fd_sk, (struct sockaddr *)&sa, sizeof(sa));
+    HANDLE_FATAL(res, "bind");
+    res = listen(fd_sk, SOMAXCONN);
+    HANDLE_FATAL(res, "listen");
+    
+    FD_ZERO(&set);
+    FD_SET(fd_sk, &set); 
+
+    for(int i = 0; i < cfg.threadsInPool; i++) {
+        pthread_create(threadPool + i, NULL, worker_thread, &payload);
+    }
+
+    while(!SHOULD_EXIT) {
+        if(signalStatus == SIGUSR1) {
+            /* È stato ricevuto il segnale di scrittura delle statistiche */
+            FILE *statFile = fopen(cfg.statFileName, "a");
+            HANDLE_NULL(statFile, "fopen");
+
+            res = pthread_mutex_lock(&statsMtx);
+            HANDLE_FATAL(res, "pthread_mutex_lock");
+
+            res = printStats(statFile);
+            HANDLE_FATAL(res, "printStats");
+
+            res = pthread_mutex_unlock(&statsMtx);
+            HANDLE_FATAL(res, "pthread_mutex_unlock");
+
+            fclose(statFile);
+
+            signalStatus = 0;
+        }
+
+        rdSet = set;
+        res = select(FD_SETSIZE, &rdSet, NULL, NULL, NULL);
+        if(res < 0) {
+            /*
+             * La select ha fallito per qualche motivo, forse
+             * perchè è stata interrotta: se così fosse SHOULD_EXIT adesso
+             * è true e il programma deve terminare, altrimenti ritenta la select
+             */
+            continue;
+        }
+
+        for (int i = 0; i < FD_SETSIZE; ++i) {
+            if (FD_ISSET(i, &rdSet)) {
+                if (i == fd_sk) {
+                    /* Connessione da un nuovo client */
+                    int newClient;
+                    newClient = accept(fd_sk, NULL, 0);
+                    HANDLE_FATAL(newClient, "accept");
+
+                    res = pthread_mutex_lock(&statsMtx);
+                    HANDLE_FATAL(res, "pthread_mutex_lock");
+                    if(chattyStats.nonline >= cfg.maxConnections) {
+                        /* Numero massimo di connessioni raggiunto, rifiuta la connessione */
+                        message_t errMsg;
+                        makeErrorMessage(&errMsg, OP_FAIL, "");
+                        sendRequest(newClient, &errMsg);
+                        chattyStats.nerrors++;
+                    } else {
+                        chattyStats.nonline++;
+                        FD_SET(newClient, &rdSet);
+                    }
+
+                    res = pthread_mutex_unlock(&statsMtx);
+                    HANDLE_FATAL(res, "pthread_mutex_unlock");
+                } else {
+                    /* Un client già connesso è pronto */
+                    cqueue_push(payload.ready_sockets, (void*)i);
+                    FD_CLR(i, &rdSet);
+                }
+            }
+        }
+    }
+
+    /* Mette in coda un messaggio speciale per segnalare ai thread
+       di terminare */
+    cqueue_push(payload.ready_sockets, (void*)-1);
+
+    for(int i = 0; i < cfg.threadsInPool; i++) {
+        pthread_join(threadPool[i], NULL);
+    }
+    
+    printf("\nClosing\n");
+
+    /* Elimina il file socket */
     unlink(cfg.socketPath);
 
-    cqueue_t *clients_queue = cqueue_init();
+    res = chash_deinit(payload.registered_clients, free);
+    HANDLE_FATAL(res, "chash_deinit");
 
-    cqueue_deinit(clients_queue, free);
+    res = cqueue_deinit(payload.ready_sockets, NULL);
+    HANDLE_FATAL(res, "cqueue_deinit");
+
+    res = pthread_mutex_destroy(&statsMtx);
+    HANDLE_FATAL(res, "pthread_mutex_destroy");
     return 0;
 }
