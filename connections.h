@@ -17,69 +17,63 @@
 #include <message.h>
 
 /**
- * @file  connections.h
- * @brief Contiene le funzioni che implementano il protocollo 
+ * \brief Contiene le funzioni che implementano il protocollo 
  *        tra i clients ed il server
  */
 
 /**
- * @fn openConnection
- * @brief Apre una connessione AF_UNIX verso il server 
+ * \brief Apre una connessione AF_UNIX verso il server 
  *
- * @param path Path del socket AF_UNIX 
- * @param ntimes numero massimo di tentativi di retry
- * @param secs tempo di attesa tra due retry consecutive
+ * \param path Path del socket AF_UNIX 
+ * \param ntimes numero massimo di tentativi di retry
+ * \param secs tempo di attesa tra due retry consecutive
  *
- * @return il descrittore associato alla connessione in caso di successo
+ * \return il descrittore associato alla connessione in caso di successo
  *         -1 in caso di errore
  */
 int openConnection(char* path, unsigned int ntimes, unsigned int secs);
 
 // -------- server side ----- 
 /**
- * @fn readHeader
- * @brief Legge l'header del messaggio
+ * \brief Legge l'header del messaggio
  *
- * @param fd     descrittore della connessione
- * @param hdr    puntatore all'header del messaggio da ricevere
+ * \param fd     descrittore della connessione
+ * \param hdr    puntatore all'header del messaggio da ricevere
  *
- * @return <=0 se c'e' stato un errore 
+ * \return <=0 se c'e' stato un errore 
  *         (se <0 errno deve essere settato, se == 0 connessione chiusa) 
  */
 int readHeader(long fd, message_hdr_t *hdr);
 
 /**
- * @fn readData
- * @brief Legge il body del messaggio
+ * \brief Legge il body del messaggio
  *
- * @param fd     descrittore della connessione
- * @param data   puntatore al body del messaggio
+ * \param fd     descrittore della connessione
+ * \param data   puntatore al body del messaggio
  *
- * @return <=0 se c'e' stato un errore
+ * \return <=0 se c'e' stato un errore
  *         (se <0 errno deve essere settato, se == 0 connessione chiusa) 
  */
 int readData(long fd, message_data_t *data);
 
 /**
- * @fn readDataHeader
- * @brief Legge l'header dei dati del messaggio
+ * \brief Legge l'header dei dati del messaggio
  *
- * @param fd        descrittore della connessione
- * @param datahdr   puntatore all'header dei dati
+ * \param fd        descrittore della connessione
+ * \param datahdr   puntatore all'header dei dati
  *
- * @return <=0 se c'e' stato un errore
+ * \return <=0 se c'e' stato un errore
  *         (se <0 errno deve essere settato, se == 0 connessione chiusa) 
  */
 int readDataHeader(long fd, message_data_hdr_t *datahdr);
 
 /**
- * @fn readMsg
- * @brief Legge l'intero messaggio
+ * \brief Legge l'intero messaggio
  *
- * @param fd     descrittore della connessione
- * @param msg    puntatore al messaggio
+ * \param fd     descrittore della connessione
+ * \param msg    puntatore al messaggio
  *
- * @return <=0 se c'e' stato un errore
+ * \return <=0 se c'e' stato un errore
  *         (se <0 errno deve essere settato, se == 0 connessione chiusa) 
  */
 int readMsg(long fd, message_t *msg);
@@ -89,24 +83,22 @@ int readMsg(long fd, message_t *msg);
 
 // ------- client side ------
 /**
- * @fn sendRequest
- * @brief Invia un messaggio di richiesta al server 
+ * \brief Invia un messaggio di richiesta al server 
  *
- * @param fd     descrittore della connessione
- * @param msg    puntatore al messaggio da inviare
+ * \param fd     descrittore della connessione
+ * \param msg    puntatore al messaggio da inviare
  *
- * @return <=0 se c'e' stato un errore
+ * \return <=0 se c'e' stato un errore
  */
 int sendRequest(long fd, message_t *msg);
 
 /**
- * @fn sendData
- * @brief Invia il body del messaggio al server
+ * \brief Invia il body del messaggio al server
  *
- * @param fd     descrittore della connessione
- * @param msg    puntatore al messaggio da inviare
+ * \param fd     descrittore della connessione
+ * \param msg    puntatore al messaggio da inviare
  *
- * @return <=0 se c'e' stato un errore
+ * \return <=0 se c'e' stato un errore
  */
 int sendData(long fd, message_data_t *msg);
 

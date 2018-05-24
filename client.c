@@ -6,8 +6,7 @@
  * 
  */
 /**
- * @file client.c
- * @brief Semplice client di test. 
+ * \brief Semplice client di test. 
  *
  *
  */

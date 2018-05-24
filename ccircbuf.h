@@ -1,5 +1,6 @@
-/** \file ccircbuf.h
+/**
  *  \author Francesco Bertolaccini 543981
+ * 
  *   Si dichiara che il contenuto di questo file e' in ogni sua parte opera
  *     originale dell'autore
  * 
@@ -11,6 +12,7 @@
 
 #include <sys/types.h>
 
+/// Buffer circolare concorrente
 typedef struct ccircbuf ccircbuf_t;
 
 /**
@@ -33,7 +35,7 @@ int ccircbuf_deinit(ccircbuf_t *buf);
  * \brief Estrae tutti gli elementi presenti nel buffer circolare
  * 
  * Il buffer è bloccato finchè il vettore puntato da dest non viene
- * sbloccato con cccircbug_unlock_elems
+ * sbloccato con ccircbuf_unlock_elems(ccircbuf_t*, void***)
  * 
  * \param buf Il buffer da cui estrarre gli elementi
  * \param dest Puntatore dove porre gli elementi estratti

@@ -6,8 +6,7 @@
  * 
  */
 /**
- * @file config.h
- * @brief File contenente alcune define con valori massimi utilizzabili
+ * \brief File contenente alcune define con valori massimi utilizzabili
  */
 
 #if !defined(CONFIG_H_)

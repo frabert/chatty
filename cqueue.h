@@ -1,5 +1,6 @@
-/** \file cqueue.h
+/**
  *  \author Francesco Bertolaccini 543981
+ * 
  *   Si dichiara che il contenuto di questo file e' in ogni sua parte opera
  *     originale dell'autore
  * 
@@ -12,6 +13,7 @@
 #ifndef CQUEUE_H
 #define CQUEUE_H
 
+/// Coda concorrente
 typedef struct cqueue cqueue_t;
 
 /**

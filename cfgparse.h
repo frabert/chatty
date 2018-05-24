@@ -1,7 +1,9 @@
-/** \file cfgparse.h
+/**
  *  \author Francesco Bertolaccini 543981
+ * 
  *   Si dichiara che il contenuto di questo file e' in ogni sua parte opera
  *     originale dell'autore
+ * 
  *  \brief Utilità di parsing dei file di configurazione
  * 
  * Effettua il parsing di un file di configurazione e chiama una funzione
@@ -13,7 +15,6 @@
 #define CFGPARSE_H_
 
 /**
- * \typedef ConfigCallback
  * \brief Tipo della funzione di callback che viene chiamata
  *        ad ogni valore di configurazione trovato
  * 
@@ -31,8 +32,6 @@
 typedef int (*ConfigCallback)(const char *key, const char *value, void *ud);
 
 /**
- * \fn cfg_parse
- * 
  * \brief Funzione principale di parsing
  * 
  * \param str La stringa null-terminata su cui effettuare il parsing

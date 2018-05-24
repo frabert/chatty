@@ -6,7 +6,6 @@
  * 
  */
 /**
- * \file chatty.c
  * \brief File principale del server chatterbox
  */
 #define _POSIX_C_SOURCE 200809L
@@ -33,7 +32,10 @@
 #include "ccircbuf.h"
 #include "connections.h"
 
+/// Massima lunghezza di un path nei file di configurazione
 #define MAX_PATH_LEN 128
+
+/// Consente di sapere se è stato ricevuto un segnale di terminazione
 #define SHOULD_EXIT ((signalStatus == SIGINT) || (signalStatus == SIGQUIT) || (signalStatus == SIGTERM))
 
 
@@ -51,14 +53,14 @@ volatile sig_atomic_t signalStatus = 0;
  * \brief Dati letti dai file di configurazione
  */
 struct server_cfg {
-    char socketPath[MAX_PATH_LEN];
-    int maxConnections;
-    int threadsInPool;
-    int maxMsgSize;
-    int maxFileSize;
-    int maxHistMsgs;
-    char dirName[MAX_PATH_LEN];
-    char statFileName[MAX_PATH_LEN];
+    char socketPath[MAX_PATH_LEN]; //< Path del socket su cui effettuare la connessione
+    int maxConnections; //< Massimo numero di client connessi ammesso
+    int threadsInPool; //< Numero di threads da spawnare per gestire le connessioni
+    int maxMsgSize; //< Massima lunghezza di un messaggio testuale
+    int maxFileSize; //< Massima lunghezza di un file inviato
+    int maxHistMsgs; //< Lunghezza massima della cronologia dei messaggi
+    char dirName[MAX_PATH_LEN]; //< Nome della directory in cui depositare i file scambiati
+    char statFileName[MAX_PATH_LEN]; //< Nome del file su cui memorizzare le statistiche
 };
 
 /**
@@ -233,7 +235,6 @@ static void signal_handler(int signal) {
 }
 
 /**
- * \fn setup_signal_handlers
  * \brief Imposta gli handler per i segnali da gestire
  */
 static void setup_signal_handlers() {

@@ -10,8 +10,7 @@
 #define OPS_H_
 
 /**
- * @file  ops.h
- * @brief Contiene i codici delle operazioni di richiesta e risposta
+ * \brief Contiene i codici delle operazioni di richiesta e risposta
  */
 
 

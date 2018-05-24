@@ -14,17 +14,16 @@
 #include <ops.h>
 
 /**
- * @file  message.h
- * @brief Contiene il formato del messaggio
+ * \brief Contiene il formato del messaggio
  */
 
 
 /**
- *  @struct header
- *  @brief header del messaggio 
+ *  \struct header
+ *  \brief header del messaggio 
  *
- *  @var op tipo di operazione richiesta al server
- *  @var sender nickname del mittente 
+ *  \var op tipo di operazione richiesta al server
+ *  \var sender nickname del mittente 
  */
 typedef struct {
     op_t     op;   
@@ -32,11 +31,11 @@ typedef struct {
 } message_hdr_t;
 
 /**
- *  @struct header
- *  @brief header della parte dati
+ *  \struct header
+ *  \brief header della parte dati
  *
- *  @var receiver nickname del ricevente
- *  @var len lunghezza del buffer dati
+ *  \var receiver nickname del ricevente
+ *  \var len lunghezza del buffer dati
  */
 typedef struct {
     char receiver[MAX_NAME_LENGTH+1];
@@ -44,11 +43,11 @@ typedef struct {
 } message_data_hdr_t;
 
 /**
- *  @struct data
- *  @brief body del messaggio 
+ *  \struct data
+ *  \brief body del messaggio 
  *
- *  @var hdr header della parte dati
- *  @var buf buffer dati
+ *  \var hdr header della parte dati
+ *  \var buf buffer dati
  */
 typedef struct {
     message_data_hdr_t  hdr;
@@ -56,11 +55,11 @@ typedef struct {
 } message_data_t;
 
 /**
- *  @struct messaggio
- *  @brief tipo del messaggio 
+ *  \struct messaggio
+ *  \brief tipo del messaggio 
  *
- *  @var hdr header
- *  @var data dati
+ *  \var hdr header
+ *  \var data dati
  */
 typedef struct {
     message_hdr_t  hdr;
@@ -70,12 +69,11 @@ typedef struct {
 /* ------ funzioni di utilità ------- */
 
 /**
- * @fn setheader
- * @brief scrive l'header del messaggio
+ * \brief scrive l'header del messaggio
  *
- * @param hdr puntatore all'header
- * @param op tipo di operazione da eseguire
- * @param sender mittente del messaggio
+ * \param hdr puntatore all'header
+ * \param op tipo di operazione da eseguire
+ * \param sender mittente del messaggio
  */
 static inline void setHeader(message_hdr_t *hdr, op_t op, char *sender) {
 #if defined(MAKE_VALGRIND_HAPPY)
@@ -85,13 +83,12 @@ static inline void setHeader(message_hdr_t *hdr, op_t op, char *sender) {
     strncpy(hdr->sender, sender, strlen(sender)+1);
 }
 /**
- * @fn setData
- * @brief scrive la parte dati del messaggio
+ * \brief scrive la parte dati del messaggio
  *
- * @param msg puntatore al body del messaggio
- * @param rcv nickname o groupname del destinatario
- * @param buf puntatore al buffer 
- * @param len lunghezza del buffer
+ * \param msg puntatore al body del messaggio
+ * \param rcv nickname o groupname del destinatario
+ * \param buf puntatore al buffer 
+ * \param len lunghezza del buffer
  */
 static inline void setData(message_data_t *data, char *rcv, const char *buf, unsigned int len) {
 #if defined(MAKE_VALGRIND_HAPPY)

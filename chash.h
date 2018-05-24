@@ -1,5 +1,6 @@
-/** \file chash.h
+/**
  *  \author Francesco Bertolaccini 543981
+ * 
  *   Si dichiara che il contenuto di questo file e' in ogni sua parte opera
  *     originale dell'autore
  * 
@@ -15,6 +16,7 @@
 #ifndef CHASH_H_
 #define CHASH_H_
 
+/// Tabella hash concorrente
 typedef struct chash chash_t;
 
 /**

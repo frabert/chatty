@@ -1,5 +1,6 @@
-/** \file errman.h
+/**
  *  \author Francesco Bertolaccini 543981
+ * 
  *   Si dichiara che il contenuto di questo file e' in ogni sua parte opera
  *     originale dell'autore
  *  \brief Varie macro per la gestione degli errori
@@ -13,7 +14,6 @@
 #include <stdlib.h>
 
 /**
- * \def HANDLE_FATAL(x, s)
  * \brief Se x vale < 0, il programma termina con un messaggio d'errore
  * 
  * Il messaggio d'errore conterrà anche un riferimento a dove è stato generato
@@ -23,6 +23,11 @@
                             perror(s); \
                             exit(EXIT_FAILURE); }
 
+/**
+ * \brief Se x è NULL, il programma termina con un messaggio d'errore
+ * 
+ * Il messaggio d'errore conterrà anche un riferimento a dove è stato generato
+ */
 #define HANDLE_NULL(x, s) if ((x) == NULL) { \
                           fprintf(stderr, "%s: %d ", __FILE__, __LINE__); \
                           perror(s); \

@@ -25,12 +25,11 @@ struct statistics {
 
 
 /**
- * @fn printStats
- * @brief Stampa le statistiche nel file passato come argomento
+ * \brief Stampa le statistiche nel file passato come argomento
  *
- * @param fout descrittore del file aperto in append.
+ * \param fout descrittore del file aperto in append.
  *
- * @return 0 in caso di successo, -1 in caso di fallimento 
+ * \return 0 in caso di successo, -1 in caso di fallimento 
  */
 static inline int printStats(FILE *fout) {
     extern struct statistics chattyStats;

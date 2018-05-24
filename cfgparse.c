@@ -1,32 +1,34 @@
-/** \file cfgparse.c
+/**
  *  \author Francesco Bertolaccini 543981
+ * 
  *  Si dichiara che il contenuto di questo file e' in ogni sua parte opera
  *    originale dell'autore
  */
 
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include "cfgparse.h"
 
-/* Ignora una sequenza di caratteri vuoti. Se trovata, restituisce 1, altrimenti 0 */
+/** Ignora una sequenza di caratteri vuoti. Se trovata, restituisce 1, altrimenti 0 */
 int skipWhitespace(char **str);
 
-/* Ignora un commento. Se trovato, restituisce 1, altrimenti 0 */
+/** Ignora un commento. Se trovato, restituisce 1, altrimenti 0 */
 int skipComment(char **str);
 
-/* Supera un carattere newline. Se trovato restituisce 1, altrimenti 0 */
+/** Supera un carattere newline. Se trovato restituisce 1, altrimenti 0 */
 int parseEOL(char **str);
 
-/* Restituisce 1 se alla fine della stringa. Altrimenti 0 */
+/** Restituisce 1 se alla fine della stringa. Altrimenti 0 */
 int parseEOF(char **str);
 
-/* Legge un identificatore e lo restituisce. Se non viene trovato, restituisce NULL */
+/** Legge un identificatore e lo restituisce. Se non viene trovato, restituisce NULL */
 char *parseIdent(char **str);
 
-/* Legge un valore e lo restituisce. Se non viene trovato, restituisce NULL */
+/** Legge un valore e lo restituisce. Se non viene trovato, restituisce NULL */
 char *parseValue(char **str);
 
-/* Legge una stringa e la restituisce. Se non viene trovata, restituisce NULL */
+/** Legge una stringa e la restituisce. Se non viene trovata, restituisce NULL */
 int parseString(char **str, char **out);
 
 int cfg_parse(char *str, ConfigCallback cb, void *userdata) {
@@ -52,13 +54,16 @@ int cfg_parse(char *str, ConfigCallback cb, void *userdata) {
     /* Legge l'identificatore a cui assegnare il valore */
     char *ident = parseIdent(&str);
 
-    if(!ident)
+    if(!ident) {
+        errno = EINVAL;
         return -1;
+    }
 
     /* Salta ogni whitespace che ci potrebbe essere dopo l'identificatore */
     skipWhitespace(&str);
     if(*str != '=') {
       free(ident);
+      errno = EINVAL;
       return -1;
     }
     str = str + 1;
@@ -165,7 +170,7 @@ int parseString(char **str, char **out) {
       (*out)[len] = '\0';
       return 1;
     } else {
-      // Non è stata trovata la stringa
+      /* Non è stata trovata la stringa */
       return 0;
     }
   }
