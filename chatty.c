@@ -116,6 +116,7 @@ typedef struct connected_client {
  * \brief Dati da passare ai thread come contesto di lavoro
  */
 typedef struct worker_thread_payload {
+  fd_set set; ///< Bitset dei descrittori su cui ascoltare
   cqueue_t *ready_sockets; ///< Coda dei socket pronti (tipo: int)
   chash_t *registered_clients; ///< Tabella degli utenti registrati (tipo: client_descriptor_t*)
   connected_client_t *connected_clients; ///< Vettore di client connessi
@@ -133,7 +134,8 @@ typedef struct worker_thread_payload {
 static void makeErrorMessage(message_t *msg, op_t error, const char *receiver) {
   memset(msg, 0, sizeof(message_t));
   msg->hdr.op = error;
-  memcpy(&(msg->data.hdr.receiver), receiver, strlen(receiver));
+  if(receiver != NULL)
+    memcpy(&(msg->data.hdr.receiver), receiver, strlen(receiver));
 }
 
 /**
@@ -319,24 +321,64 @@ static void disconnect_client(long fd, payload_t *pl) {
     }
   }
   HANDLE_FATAL(pthread_mutex_unlock(&(pl->connected_clients_mtx)), "pthread_mutex_unlock");
+
+  FD_CLR(fd, &(pl->set));
+  close(fd);
+}
+
+struct connect_client_data {
+  int fd;
+  payload_t *pl;
+};
+
+static void send_user_list(int fd, payload_t *pl) {
+  HANDLE_FATAL(pthread_mutex_lock(&(statsMtx)), "pthread_mutex_lock");
+  HANDLE_FATAL(pthread_mutex_lock(&(pl->connected_clients_mtx)), "pthread_mutex_lock");
+  unsigned long num = chattyStats.nusers;
+  char *buf = calloc(sizeof(char) * (MAX_NAME_LENGTH + 1), num);
+  int c = 0;
+  for(int i = 0; i < pl->cfg->maxConnections; i++) {
+    if(pl->connected_clients[i].fd > 0) {
+      strncpy(buf + (MAX_NAME_LENGTH + 1) * c, pl->connected_clients[i].nick, MAX_NAME_LENGTH);
+      c++;
+    }
+  }
+
+  HANDLE_FATAL(pthread_mutex_unlock(&(pl->connected_clients_mtx)), "pthread_mutex_unlock");
+  HANDLE_FATAL(pthread_mutex_unlock(&(statsMtx)), "pthread_mutex_unlock");
+  
+  message_t msg;
+  memset(&msg, 0, sizeof(message_t));
+  msg.hdr.op = OP_OK;
+  msg.data.hdr.len = sizeof(char) * (MAX_NAME_LENGTH + 1) * num;
+  msg.data.buf = buf;
+
+  int ret = sendRequest(fd, &msg);
+  HANDLE_FATAL(ret, "sendRequest");
+
+  if(ret == 0) {
+    disconnect_client(fd, pl);
+  }
+
+  free(buf);
 }
 
 /**
  * \brief Registra il nickname \ref nick
  * 
- * \param nick Il nickname da registrare
+ * \param msg Il messaggio ricevuto
  * \param fd Il descrittore a cui inviare il messaggio d'errore
  *           nel caso in cui il nickname fosse già registrato
  * \param pl Informazioni di contesto
  */
-static void register_nick(const char *nick, long fd, payload_t *pl) {
+static void register_nick(message_t *msg, long fd, payload_t *pl) {
   client_descriptor_t *cd = calloc(1, sizeof(client_descriptor_t));
   cd->message_buffer = ccircbuf_init(pl->cfg->maxHistMsgs);
   HANDLE_NULL(cd->message_buffer, "ccircbuf_init");
 
   cd->fd = -1;
 
-  int res = chash_set_if_empty(pl->registered_clients, nick, cd);
+  int res = chash_set_if_empty(pl->registered_clients, msg->hdr.sender, cd);
   HANDLE_FATAL(res, "chash_set_if_empty");
 
   if(res != 0) {
@@ -354,20 +396,11 @@ static void register_nick(const char *nick, long fd, payload_t *pl) {
     free_client_descriptor(cd);
   } else {
     HANDLE_FATAL(pthread_mutex_lock(&statsMtx), "pthread_mutex_lock");
-    printf("Utente registrato: %s\n", nick);
+    printf("Utente registrato: %s\n", msg->hdr.sender);
     chattyStats.nusers++;
     HANDLE_FATAL(pthread_mutex_unlock(&statsMtx), "pthread_mutex_unlock");
+    send_user_list(fd, pl);
   }
-}
-
-struct connect_client_data {
-  int fd;
-  payload_t *pl;
-};
-
-static void send_user_list(int fd, payload_t *pl) {
-  HANDLE_FATA(pthread_mutex_lock())
-  char *buf = malloc(sizeof(char) * (MAX_NAME_LENGTH + 1) * )
 }
 
 static void connect_client_cb(const char *key, void *value, void *ud) {
@@ -375,6 +408,7 @@ static void connect_client_cb(const char *key, void *value, void *ud) {
 
   int fd = data->fd;
   if(value == NULL) {
+    printf("Connessione non valida\n");
     message_t errMsg;
     makeErrorMessage(&errMsg, OP_NICK_UNKNOWN, NULL);
 
@@ -383,9 +417,10 @@ static void connect_client_cb(const char *key, void *value, void *ud) {
 
     if(ret == 0) {
       /* Il client si è disconnesso */
-      disconnect_client(fd, pl);
+      disconnect_client(fd, data->pl);
     }
   } else {
+    printf("Connessione valida\n");
     /* Connette il client */
     client_descriptor_t *cd = (client_descriptor_t *)value;
     cd->fd = fd;
@@ -399,7 +434,7 @@ static void connect_client_cb(const char *key, void *value, void *ud) {
       }
     }
 
-
+    send_user_list(fd, data->pl);
   }
 }
 
@@ -412,7 +447,11 @@ static void connect_client_cb(const char *key, void *value, void *ud) {
  */
 static void connect_client(message_t *msg, long fd, payload_t *pl) {
   assert(msg->hdr.op == CONNECT_OP);
-  chash_get(pl->registered_clients, msg->hdr.sender, connect_client_cb, (void*)fd);
+  struct connect_client_data data;
+  data.pl = pl;
+  data.fd = fd;
+
+  chash_get(pl->registered_clients, msg->hdr.sender, connect_client_cb, &data);
 }
 
 /**
@@ -439,24 +478,28 @@ void *worker_thread(void *data) {
     }
 
     message_t msg;
+    memset(&msg, 0, sizeof(message_t));
+    printf("Aspettando %d\n", fd);
     int res = readMsg(fd, &msg);
     HANDLE_FATAL(res, "readMsg");
 
     if(res == 0) {
+      printf("read 0\n");
       /* Il client si è disconnesso */
       disconnect_client(fd, pl);
     } else {
       printf("Messaggio ricevuto: %d\n", msg.hdr.op);
       switch(msg.hdr.op) {
       case REGISTER_OP:
-        register_nick(msg.data.buf, fd, pl);
+        register_nick(&msg, fd, pl);
         break;
       case CONNECT_OP:
         connect_client(&msg, fd, pl);
-      default:
-        break;
       }
+      
+      FD_SET(fd, &(pl->set));
     }
+    free(msg.data.buf);
   }
 
   return NULL;
@@ -509,7 +552,7 @@ int main(int argc, char *argv[]) {
 
   int fd_sk;
   struct sockaddr_un sa;
-  fd_set set, rdSet;
+  fd_set readSet;
 
   /* Creazione del socket */
   strncpy(sa.sun_path, cfg.socketPath, MAX_PATH_LEN);
@@ -521,8 +564,8 @@ int main(int argc, char *argv[]) {
   res = listen(fd_sk, SOMAXCONN);
   HANDLE_FATAL(res, "listen");
   
-  FD_ZERO(&set);
-  FD_SET(fd_sk, &set); 
+  FD_ZERO(&(payload.set));
+  FD_SET(fd_sk, &(payload.set)); 
 
   for(int i = 0; i < cfg.threadsInPool; i++) {
     pthread_create(threadPool + i, NULL, worker_thread, &payload);
@@ -543,9 +586,13 @@ int main(int argc, char *argv[]) {
       signalStatus = 0;
     }
 
-    rdSet = set;
-    printf("select\n");
-    res = select(FD_SETSIZE, &rdSet, NULL, NULL, NULL);
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 10000;
+
+    readSet = payload.set;
+
+    res = select(FD_SETSIZE, &readSet, NULL, NULL, &timeout);
     if(res < 0) {
       /*
        * La select ha fallito per qualche motivo, forse
@@ -556,12 +603,13 @@ int main(int argc, char *argv[]) {
     }
 
     for (long i = 0; i < FD_SETSIZE; ++i) {
-      if (FD_ISSET(i, &rdSet)) {
+      if (FD_ISSET(i, &readSet)) {
         if (i == fd_sk) {
           /* Connessione da un nuovo client */
           int newClient;
           newClient = accept(fd_sk, NULL, 0);
           HANDLE_FATAL(newClient, "accept");
+          printf("Nuovo client: %d\n", newClient);
 
           HANDLE_FATAL(pthread_mutex_lock(&statsMtx), "pthread_mutex_lock");
           if(chattyStats.nonline >= cfg.maxConnections) {
@@ -572,15 +620,15 @@ int main(int argc, char *argv[]) {
             chattyStats.nerrors++;
           } else {
             chattyStats.nonline++;
-            FD_SET(newClient, &rdSet);
+            FD_SET(newClient, &(payload.set));
           }
 
           HANDLE_FATAL(pthread_mutex_unlock(&statsMtx), "pthread_mutex_unlock");
         } else {
-          printf("Socket pronto: %ld\n", i);
+          printf("Nuovo messaggio: %d\n", i);
           /* Un client già connesso è pronto */
           cqueue_push(payload.ready_sockets, (void*)i);
-          FD_CLR(i, &rdSet);
+          FD_CLR(i, &(payload.set));
         }
       }
     }
@@ -591,11 +639,14 @@ int main(int argc, char *argv[]) {
   cqueue_clear(payload.ready_sockets, NULL);
   cqueue_push(payload.ready_sockets, (void*)-1);
 
+  printf("\nClosing...\n");
+
   for(int i = 0; i < cfg.threadsInPool; i++) {
     pthread_join(threadPool[i], NULL);
   }
+  free(threadPool);
   
-  printf("\nClosing\n");
+  printf("\nCleaning...\n");
 
   /* Elimina il file socket */
   unlink(cfg.socketPath);
@@ -603,5 +654,7 @@ int main(int argc, char *argv[]) {
   HANDLE_FATAL(chash_deinit(payload.registered_clients, free_client_descriptor), "chash_deinit");
   HANDLE_FATAL(cqueue_deinit(payload.ready_sockets, NULL), "cqueue_deinit");
   HANDLE_FATAL(pthread_mutex_destroy(&statsMtx), "pthread_mutex_destroy");
+
+  free(payload.connected_clients);
   return 0;
 }

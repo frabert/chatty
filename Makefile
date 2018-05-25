@@ -68,7 +68,7 @@ INCLUDE_FILES   = connections.h \
 
 
 
-.PHONY: all clean cleanall test1 test2 test3 test4 test5 consegna
+.PHONY: all clean cleanall test1 test2 test3 test4 test5 consegna memcheck
 .SUFFIXES: .c .h
 
 %: %.c
@@ -79,6 +79,9 @@ INCLUDE_FILES   = connections.h \
 
 all: $(TARGETS)
 
+# Test valgrind
+memcheck: chatty
+	valgrind -v --leak-check=full --track-origins=yes ./chatty -f DATA/chatty.conf1
 
 chatty: chatty.o libchatty.a $(INCLUDE_FILES)
 	$(CC) $(CFLAGS) $(INCLUDES) $(OPTFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)

@@ -80,7 +80,7 @@ int ccircbuf_get_elems(ccircbuf_t* buf, void ***dest) {
     *dest[i] = elem;
   }
 
-  return buf->len;
+  return buf->num;
 }
 
 int ccircbuf_unlock_elems(ccircbuf_t* buf, void ***elems) {

@@ -241,7 +241,7 @@ int chash_set_if_empty(chash_t *table, const char *key, void *value) {
     if(value == NULL) {
       goto end;
     }
-    chash_entry_t *newEntry = malloc(sizeof(chash_entry_t));
+    chash_entry_t *newEntry = calloc(sizeof(chash_entry_t), 1);
     if(newEntry == NULL) {
       ret = pthread_rwlock_unlock(&(table->lock));
       if(ret != 0) {
@@ -311,7 +311,7 @@ end:
 }
 
 static int deinit_elem(chash_entry_t *elem, chash_deinitializer cb) {
-  if(elem->next == NULL) {
+  if(elem->next != NULL) {
     deinit_elem(elem->next, cb);
   }
 
