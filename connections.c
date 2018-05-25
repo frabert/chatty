@@ -13,6 +13,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include "connections.h"
 
 /**
@@ -30,10 +31,12 @@ static ssize_t readn(long fd, void *buf, size_t len) {
   }
 
   size_t offset = 0;
+  uint8_t *bytes = (uint8_t*)buf;
+
   while(offset < len) {
-    ssize_t r = read(fd, buf + offset, len - offset);
+    ssize_t r = read(fd, bytes + offset, len - offset);
     while(r < 0 && errno == EINTR) {
-      r = read(fd, buf + offset, len - offset);
+      r = read(fd, bytes + offset, len - offset);
     }
     if(r == 0) return 0;
     if(r < 0) return -1;
@@ -58,10 +61,11 @@ static ssize_t writen(long fd, void *buf, size_t len) {
   }
 
   size_t offset = 0;
+  uint8_t *bytes = (uint8_t*)buf;
   while(offset < len) {
-    ssize_t w = write(fd, buf + offset, len - offset);
+    ssize_t w = write(fd, bytes + offset, len - offset);
     while(w < 0 && errno == EINTR) {
-      w = write(fd, buf + offset, len - offset);
+      w = write(fd, bytes + offset, len - offset);
     }
     if(w == 0) return 0;
     if(w < 0) return -1;

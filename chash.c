@@ -266,10 +266,8 @@ int chash_set_if_empty(chash_t *table, const char *key, void *value) {
     table->entries[idx] = newEntry;
     table->numkeys++;
   } else {
-    chash_entry_t  *prev = NULL;
     chash_entry_t *ptr = table->entries[idx];
     while(ptr != NULL && strcmp(ptr->key, key) != 0) {
-      prev = ptr;
       ptr = ptr->next;
     }
 
@@ -352,7 +350,7 @@ int chash_deinit(chash_t *table, chash_deinitializer cb) {
   return 0;
 }
 
-int chash_keys(chash_t *ht, char **keys) {
+int chash_keys(chash_t *ht, char ***keys) {
   if(ht == NULL || keys == NULL) {
     errno = EINVAL;
     return -1;
@@ -363,7 +361,7 @@ int chash_keys(chash_t *ht, char **keys) {
 
   int numkeys = ht->numkeys;
 
-  *keys = malloc(sizeof(char *) * numkeys);
+  *keys = malloc(sizeof(char **) * numkeys);
   if(*keys == NULL) {
     return -1;
   }
@@ -374,8 +372,8 @@ int chash_keys(chash_t *ht, char **keys) {
       chash_entry_t *ptr = ht->entries[i];
       while(ptr != NULL) {
         int len = strlen(ptr->key);
-        keys[j] = malloc(sizeof(char) * (len + 1));
-        memcpy(keys[j], ptr->key, len + 1);
+        *keys[j] = malloc(sizeof(char) * (len + 1));
+        memcpy(*keys[j], ptr->key, len + 1);
 
         ptr = ptr->next;
       }

@@ -360,6 +360,61 @@ static void register_nick(const char *nick, long fd, payload_t *pl) {
   }
 }
 
+struct connect_client_data {
+  int fd;
+  payload_t *pl;
+};
+
+static void send_user_list(int fd, payload_t *pl) {
+  HANDLE_FATA(pthread_mutex_lock())
+  char *buf = malloc(sizeof(char) * (MAX_NAME_LENGTH + 1) * )
+}
+
+static void connect_client_cb(const char *key, void *value, void *ud) {
+  struct connect_client_data *data = (struct connect_client_data*)ud;
+
+  int fd = data->fd;
+  if(value == NULL) {
+    message_t errMsg;
+    makeErrorMessage(&errMsg, OP_NICK_UNKNOWN, NULL);
+
+    int ret = sendRequest(fd, &errMsg);
+    HANDLE_FATAL(ret, "sendRequest");
+
+    if(ret == 0) {
+      /* Il client si è disconnesso */
+      disconnect_client(fd, pl);
+    }
+  } else {
+    /* Connette il client */
+    client_descriptor_t *cd = (client_descriptor_t *)value;
+    cd->fd = fd;
+    for(int i = 0; i < data->pl->cfg->maxConnections; i++) {
+      connected_client_t client = data->pl->connected_clients[i];
+      if(client.fd < 0) {
+        client.fd = fd;
+        memset(client.nick, 0, MAX_NAME_LENGTH + 1);
+        strcpy(client.nick, key);
+        break;
+      }
+    }
+
+
+  }
+}
+
+/**
+ * \brief Gestisce una richiesta di connessione da parte di un client
+ * 
+ * \param msg Il messaggio inviato dal client
+ * \param fd Il descrittore associato al client
+ * \param pl Dati di contesto
+ */
+static void connect_client(message_t *msg, long fd, payload_t *pl) {
+  assert(msg->hdr.op == CONNECT_OP);
+  chash_get(pl->registered_clients, msg->hdr.sender, connect_client_cb, (void*)fd);
+}
+
 /**
  * \brief Funzione eseguita dai thread nel pool
  * 
@@ -391,11 +446,13 @@ void *worker_thread(void *data) {
       /* Il client si è disconnesso */
       disconnect_client(fd, pl);
     } else {
-      printf("Messaggio registrato: %d\n", msg.hdr.op);
+      printf("Messaggio ricevuto: %d\n", msg.hdr.op);
       switch(msg.hdr.op) {
       case REGISTER_OP:
         register_nick(msg.data.buf, fd, pl);
         break;
+      case CONNECT_OP:
+        connect_client(&msg, fd, pl);
       default:
         break;
       }
@@ -427,6 +484,7 @@ int main(int argc, char *argv[]) {
 
   HANDLE_FATAL(pthread_mutex_init(&statsMtx, NULL), "pthread_mutex_init");
 
+  /* Conterrà i dati condivisi dai vari thread */
   payload_t payload;
   memset(&payload, 0, sizeof(payload_t));
   payload.registered_clients = chash_init();
@@ -442,10 +500,14 @@ int main(int argc, char *argv[]) {
   payload.connected_clients = calloc(cfg.maxConnections, sizeof(connected_client_t));
   HANDLE_NULL(payload.connected_clients, "calloc");
 
+  for(int i = 0; i < cfg.maxConnections; i++) {
+    payload.connected_clients[i].fd = -1;
+  }
+
   pthread_t *threadPool = malloc(sizeof(pthread_t) * cfg.threadsInPool);
   HANDLE_NULL(threadPool, "malloc");
 
-  int fd_sk, fd_c;
+  int fd_sk;
   struct sockaddr_un sa;
   fd_set set, rdSet;
 
@@ -526,6 +588,7 @@ int main(int argc, char *argv[]) {
 
   /* Mette in coda un messaggio speciale per segnalare ai thread
      di terminare */
+  cqueue_clear(payload.ready_sockets, NULL);
   cqueue_push(payload.ready_sockets, (void*)-1);
 
   for(int i = 0; i < cfg.threadsInPool; i++) {

@@ -67,4 +67,13 @@ int cqueue_pop(cqueue_t *cq, void **elem);
  */
 int cqueue_size(cqueue_t *cq);
 
+/**
+ * \brief Elimina tutti gli elementi presenti nella coda
+ * 
+ * \param cq La coda da svuotare
+ * \param cb La funzione da chiamare su ogni elemento eliminato
+ * \return int 0 in caso di successo, -1 ed errno impostato altrimenti.
+ */
+int cqueue_clear(cqueue_t *cq, cqueue_deinitializer cb);
+
 #endif /* CQUEUE_H */

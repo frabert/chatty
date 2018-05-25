@@ -109,6 +109,6 @@ int chash_set_if_empty(chash_t *table, const char *key, void *value);
  * 
  * \return int Il numero di chiavi estratte o -1 se si sono verificati errori. Nel caso, errno viene impostato
  */
-int chash_keys(chash_t *table, char **keys);
+int chash_keys(chash_t *table, char ***keys);
 
 #endif /* CHASH_H_ */

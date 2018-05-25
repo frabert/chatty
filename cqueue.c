@@ -161,3 +161,27 @@ int cqueue_size(cqueue_t *cq) {
 
   return cq->size;
 }
+
+int cqueue_clear(cqueue_t *cq, cqueue_deinitializer cb) {
+  if(cq == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  int ret = pthread_mutex_lock(&(cq->mtx));
+  CHECK_RET
+
+  node_t *ptr = cq->head;
+  while(ptr != NULL) {
+    node_t *next = ptr->next;
+    if(cb != NULL) cb(ptr->v);
+    ptr = next;
+  }
+  cq->head = NULL;
+  cq->tail = NULL;
+
+  ret = pthread_mutex_unlock(&(cq->mtx));
+  CHECK_RET
+
+  return 0;
+}
