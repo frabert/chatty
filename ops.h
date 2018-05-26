@@ -35,6 +35,7 @@ typedef enum {
     ADDGROUP_OP      = 11,  /// richiesta di aggiunta ad un gruppo
     DELGROUP_OP      = 12,  /// richiesta di rimozione da un gruppo
 
+    OP_CLIENT_END,          /// limite superiore agli id usati dal client
     /* NOTA: la richiesta di cancellazione di un gruppo e' lasciata come task opzionale */
 
     /* 
@@ -60,7 +61,7 @@ typedef enum {
      * aggiungere qui altri messaggi di ritorno che possono servire 
      */
 
-    OP_END          = 100 // limite superiore agli id usati per le operazioni
+    OP_END                 // limite superiore agli id usati per le operazioni
 
 } op_t;
     

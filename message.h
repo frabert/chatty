@@ -14,56 +14,35 @@
 #include <ops.h>
 
 /**
- * \brief Contiene il formato del messaggio
- */
-
-
-/**
- *  \struct header
- *  \brief header del messaggio 
- *
- *  \var op tipo di operazione richiesta al server
- *  \var sender nickname del mittente 
+ *  \brief Header del messaggio
  */
 typedef struct {
-    op_t     op;   
-    char sender[MAX_NAME_LENGTH+1];
+    op_t op; ///< Tipo di operazione richiesta al aserver
+    char sender[MAX_NAME_LENGTH+1]; ///< Nickname del mittente
 } message_hdr_t;
 
 /**
- *  \struct header
- *  \brief header della parte dati
- *
- *  \var receiver nickname del ricevente
- *  \var len lunghezza del buffer dati
+ *  \brief Header della parte dati
  */
 typedef struct {
-    char receiver[MAX_NAME_LENGTH+1];
-    unsigned int   len;  
+    char receiver[MAX_NAME_LENGTH+1]; ///< Nickname del destinatario
+    unsigned int len; ///< Lunghezza del buffer dati
 } message_data_hdr_t;
 
 /**
- *  \struct data
- *  \brief body del messaggio 
- *
- *  \var hdr header della parte dati
- *  \var buf buffer dati
+ *  \brief Body del messaggio 
  */
 typedef struct {
-    message_data_hdr_t  hdr;
-    char               *buf;
+    message_data_hdr_t  hdr; ///< HEader della parte dati
+    char *buf; ///< Buffer dati
 } message_data_t;
 
 /**
- *  \struct messaggio
- *  \brief tipo del messaggio 
- *
- *  \var hdr header
- *  \var data dati
+ *  \brief Tipo del messaggio
  */
 typedef struct {
-    message_hdr_t  hdr;
-    message_data_t data;
+    message_hdr_t hdr; ///< Header
+    message_data_t data; ///< Dati
 } message_t;
 
 /* ------ funzioni di utilità ------- */
@@ -85,7 +64,7 @@ static inline void setHeader(message_hdr_t *hdr, op_t op, char *sender) {
 /**
  * \brief scrive la parte dati del messaggio
  *
- * \param msg puntatore al body del messaggio
+ * \param data puntatore al body del messaggio
  * \param rcv nickname o groupname del destinatario
  * \param buf puntatore al buffer 
  * \param len lunghezza del buffer

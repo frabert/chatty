@@ -55,7 +55,7 @@ TARGETS		= chatty        \
 
 
 # aggiungere qui i file oggetto da compilare
-OBJECTS		= chatty.o libcfgparse.a libcqueue.a libchash.a libccircbuf.a connections.o
+OBJECTS		= chatty_handlers.o chatty.o libcfgparse.a libcqueue.a libchash.a libccircbuf.a connections.o
 
 # aggiungere qui gli altri include 
 INCLUDE_FILES   = connections.h \
@@ -83,7 +83,7 @@ all: $(TARGETS)
 memcheck: chatty
 	valgrind -v --leak-check=full --track-origins=yes ./chatty -f DATA/chatty.conf1
 
-chatty: chatty.o libchatty.a $(INCLUDE_FILES)
+chatty: chatty.o chatty_handlers.o libchatty.a $(INCLUDE_FILES)
 	$(CC) $(CFLAGS) $(INCLUDES) $(OPTFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 client: client.o connections.o message.h

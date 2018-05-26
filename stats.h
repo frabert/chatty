@@ -31,18 +31,16 @@ struct statistics {
  *
  * \return 0 in caso di successo, -1 in caso di fallimento 
  */
-static inline int printStats(FILE *fout) {
-    extern struct statistics chattyStats;
-
+static inline int printStats(FILE *fout, struct statistics *chattyStats) {
     if (fprintf(fout, "%ld - %ld %ld %ld %ld %ld %ld %ld\n",
 		(unsigned long)time(NULL),
-		chattyStats.nusers, 
-		chattyStats.nonline,
-		chattyStats.ndelivered,
-		chattyStats.nnotdelivered,
-		chattyStats.nfiledelivered,
-		chattyStats.nfilenotdelivered,
-		chattyStats.nerrors
+		chattyStats->nusers, 
+		chattyStats->nonline,
+		chattyStats->ndelivered,
+		chattyStats->nnotdelivered,
+		chattyStats->nfiledelivered,
+		chattyStats->nfilenotdelivered,
+		chattyStats->nerrors
 		) < 0) return -1;
     fflush(fout);
     return 0;

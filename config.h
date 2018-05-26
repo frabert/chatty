@@ -12,7 +12,11 @@
 #if !defined(CONFIG_H_)
 #define CONFIG_H_
 
-#define MAX_NAME_LENGTH                  32
+/// Massima lunghezza di un nickname
+#define MAX_NAME_LENGTH 32
+
+/// Massima lunghezza di un path nei file di configurazione
+#define MAX_PATH_LEN 128
 
 /* aggiungere altre define qui */
 
