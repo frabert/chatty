@@ -9,6 +9,8 @@
  * Effettua il parsing di un file di configurazione e chiama una funzione
  * fornita dall'utente con il nome del campo e il valore associato, oltre
  * ad un terzo valore fornito opzionalmente dall'utente
+ * 
+ * È stato utilizzato un approccio a discesa ricorsiva
  */
 
 #ifndef CFGPARSE_H_

@@ -226,6 +226,7 @@ void *worker_thread(void *data) {
           disconnect_client(fd, pl);
         }
       } else {
+        /* Esegue il gestore di richieste in base all'operazione */
         chatty_handlers[msg.hdr.op](fd, &msg, pl);
       }
       
@@ -267,13 +268,13 @@ int main(int argc, char *argv[]) {
   payload.ready_sockets = cqueue_init();
   HANDLE_NULL(payload.ready_sockets, "cqueue_init");
 
-  payload.cfg = &cfg;
-
   HANDLE_FATAL(pthread_mutex_init(&(payload.connected_clients_mtx), NULL), "pthread_mutex_init");
   HANDLE_FATAL(pthread_mutex_init(&(payload.stats_mtx), NULL), "pthread_mutex_init");
 
   payload.connected_clients = calloc(cfg.maxConnections, sizeof(connected_client_t));
   HANDLE_NULL(payload.connected_clients, "calloc");
+
+  payload.cfg = &cfg;
 
   for(int i = 0; i < cfg.maxConnections; i++) {
     payload.connected_clients[i].fd = -1;
@@ -350,7 +351,7 @@ int main(int argc, char *argv[]) {
             sendRequest(newClient, &errMsg);
             
             free(errMsg.data.buf);
-            
+
             payload.chatty_stats.nerrors++;
           } else {
             payload.chatty_stats.nonline++;

@@ -16,8 +16,10 @@
 #include "connections.h"
 #include "chatty_handlers.h"
 
+/// Dichiara un gestore di richieste
 #define HANDLER(x) void x(long fd, message_t *msg, payload_t *pl)
 
+/// Aumenta in maniera atomica il numero di errori inviati
 #define INCREASE_ERRORS(pl) HANDLE_FATAL(pthread_mutex_lock(&((pl)->stats_mtx)), "pthread_mutex_lock"); \
                             (pl)->chatty_stats.nerrors++; \
                             HANDLE_FATAL(pthread_mutex_unlock(&((pl)->stats_mtx)), "pthread_mutex_unlock");
@@ -85,6 +87,8 @@ static int send_handle_disconnect(long fd, message_t *msg, payload_t *pl) {
  * \param ud Contesto di lavoro (\ref payload_t*)
  */
 static void disconnect_client_cb(const char *key, void *value, void *ud) {
+  assert(ud != NULL);
+
   if(value == NULL) return;
 
   client_descriptor_t *cd = (client_descriptor_t*)value;
@@ -214,8 +218,11 @@ void handle_register(long fd, message_t *msg, payload_t *pl) {
   }
 }
 
-struct connect_client_data {
-  int fd; ///< Descrittore del client che richiede la connessione
+/**
+ * \brief Dati passati dalle funzioni di gestione alle callback
+ */
+struct callback_data {
+  int fd; ///< Descrittore del client che ha effettutato la richiesta
   payload_t *pl; ///< Dati di contesto
 };
 
@@ -225,10 +232,11 @@ struct connect_client_data {
  * 
  * \param key Il nome utente da associare
  * \param value Descrittore del client da associare (\ref client_descriptor_t*)
- * \param ud Contesto di lavoro (\ref connect_client_data*)
+ * \param ud Contesto di lavoro (\ref callback_data*)
  */
 static void handle_connect_cb(const char *key, void *value, void *ud) {
-  struct connect_client_data *data = (struct connect_client_data*)ud;
+  assert(ud != NULL);
+  struct callback_data *data = (struct callback_data*)ud;
 
   int fd = data->fd;
   if(value == NULL) {
@@ -243,8 +251,20 @@ static void handle_connect_cb(const char *key, void *value, void *ud) {
 
     free(errMsg.data.buf);
   } else {
-    /* Connette il client */
     client_descriptor_t *cd = (client_descriptor_t *)value;
+
+    /* Controllo se qualcuno è già connesso con lo stesso nickname */
+    if(cd->fd > 0) {
+      message_t errMsg;
+      makeErrorMessage(&errMsg, OP_FAIL, NULL, "Nickname già connesso");
+
+      int ret = send_handle_disconnect(fd, &errMsg, data->pl);
+      HANDLE_FATAL(ret, "send_handle_disconnect");
+
+      free(errMsg.data.buf);
+      return;
+    }
+
     cd->fd = fd;
     for(int i = 0; i < data->pl->cfg->maxConnections; i++) {
       connected_client_t *client = &(data->pl->connected_clients[i]);
@@ -274,11 +294,12 @@ static void handle_connect_cb(const char *key, void *value, void *ud) {
 void handle_connect(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == CONNECT_OP);
 
-  struct connect_client_data data;
+  struct callback_data data;
   data.pl = pl;
   data.fd = fd;
 
-  chash_get(pl->registered_clients, msg->hdr.sender, handle_connect_cb, &data);
+  int ret = chash_get(pl->registered_clients, msg->hdr.sender, handle_connect_cb, &data);
+  HANDLE_FATAL(ret, "chash_get");
 }
 
 /**
@@ -379,7 +400,47 @@ void handle_post_file(long fd, message_t *msg, payload_t *pl) {}
 
 void handle_get_file(long fd, message_t *msg, payload_t *pl) {}
 
-void handle_get_prev_msgs(long fd, message_t *msg, payload_t *pl) {}
+static void handle_get_prev_msgs_cb(const char *key, void *value, void *ud) {
+  assert(ub != NULL);
+  struct callback_data *data = (struct callback_data*)ud;
+
+  if(value == NULL) {
+    /* È stata richiesta la cronologia di un nickname non registrato */
+    INCREASE_ERRORS(pkt->pl);
+
+    message_t errMsg;
+    makeErrorMessage(&errMsg, OP_NICK_UNKNOWN, key, "Nickname non esistente");
+
+    int ret = send_handle_disconnect(data->fd, &errMsg, data->pl);
+    HANDLE_FATAL(ret, "send_handle_disconnect");
+    
+    free(errMsg.data.buf);
+  } else {
+    client_descriptor_t *cd = (client_descriptor_t *)value;
+
+    void **elems;
+    int numMsgs = ccircbuf_get_elems(cd->message_buffer, &elems);
+    HANDLE_FATAL(numMsgs, "ccircbuf_get_elems");
+    
+    for(int i = 0; i < numMsgs; i++) {
+      /* TODO */
+    }
+
+    int ret = ccircbuf_unlock_elems(cd->message_buffer, &elems);
+    HANDLE_FATAL(ret, "ccircbuf_unlock_elems");
+  }
+}
+
+void handle_get_prev_msgs(long fd, message_t *msg, payload_t *pl) {
+  assert(msg->hdr.op == GETPREVMSGS_OP);
+
+  struct callback_data data;
+  data.fd = fd;
+  daa.pl = pl;
+
+  int ret = chash_get(pl->registered_clients, msg->hdr.sender, handle_get_prev_msgs_cb, &data);
+  HANDLE_FATAL(ret, "chash_get");
+}
 
 void handle_usr_list(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == USRLIST_OP);
@@ -428,6 +489,7 @@ void handle_add_group(long fd, message_t *msg, payload_t *pl) {}
 
 void handle_del_group(long fd, message_t *msg, payload_t *pl) {}
 
+/* Inizializza la lookup-table dei gestori di richieste */
 chatty_request_handler *chatty_handlers[] = {
   &handle_register,
   &handle_connect,
