@@ -407,11 +407,14 @@ static void handle_get_prev_msgs_cb(const char *key, void *value, void *ud) {
     HANDLE_FATAL(numMsgs, "ccircbuf_get_elems");
     
     for(int i = 0; i < numMsgs; i++) {
+      message_t *elem = (message_t*)elems[i];
+
       /* TODO */
+
+      free(elem);
     }
 
-    int ret = ccircbuf_unlock_elems(cd->message_buffer, &elems);
-    HANDLE_FATAL(ret, "ccircbuf_unlock_elems");
+    free(elems);
   }
 }
 

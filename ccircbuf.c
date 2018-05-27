@@ -71,30 +71,21 @@ int ccircbuf_get_elems(ccircbuf_t* buf, void ***dest) {
   int ret = pthread_mutex_lock(&(buf->mtx));
   CHECK_RET
 
-  *dest = calloc(sizeof(void*), buf->len);
+  size_t len = buf->num;
+  *dest = calloc(sizeof(void*), len);
   if(*dest == NULL) {
     return -1;
   }
 
   for(size_t i = 0; i < buf->num; i++) {
-    void *elem = buf->elems[(i + buf->ptr) % buf->len];
+    void *elem = buf->elems[(i + buf->ptr) % len];
     (*dest)[i] = elem;
   }
-
-  return buf->num;
-}
-
-int ccircbuf_unlock_elems(ccircbuf_t* buf, void ***elems) {
-  if(buf == NULL || elems == NULL) {
-    errno = EINVAL;
-    return -1;
-  }
-
-  free(*elems);
-  int ret = pthread_mutex_unlock(&(buf->mtx));
+  
+  ret = pthread_mutex_unlock(&(buf->mtx));
   CHECK_RET
 
-  return 0;
+  return len;
 }
 
 int ccircbuf_insert(ccircbuf_t* buf, void *elem, void **oldElem) {

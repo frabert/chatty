@@ -34,23 +34,11 @@ int ccircbuf_deinit(ccircbuf_t *buf);
 /**
  * \brief Estrae tutti gli elementi presenti nel buffer circolare
  * 
- * Il buffer è bloccato finchè il vettore puntato da dest non viene
- * sbloccato con ccircbuf_unlock_elems(ccircbuf_t*, void***)
- * 
  * \param buf Il buffer da cui estrarre gli elementi
  * \param dest Puntatore dove porre gli elementi estratti
  * \return int -1 ed errno impostato in caso di errori, il numero di elementi estratti in caso di successo
  */
 int ccircbuf_get_elems(ccircbuf_t* buf, void ***dest);
-
-/**
- * \brief Sblocca il vettore di elementi estratti
- * 
- * \param buf Il buffer a cui appartengono gli elementi
- * \param elems Gli elementi da sbloccare
- * \return int 0 in caso di successo, -1 ed errno impostato in caso di errori
- */
-int ccircbuf_unlock_elems(ccircbuf_t* buf, void ***elems);
 
 /**
  * \brief Inserisce un elemento nel buffer

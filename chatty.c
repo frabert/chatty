@@ -57,7 +57,7 @@ void free_client_descriptor(void *ptr) {
   for(int i = 0; i < numMsg; i++) {
     free(messages[i]);
   }
-  HANDLE_FATAL(ccircbuf_unlock_elems(cd->message_buffer, &messages), "ccircbuf_unlock_elems");
+  free(messages);
   HANDLE_FATAL(ccircbuf_deinit(cd->message_buffer), "ccircbuf_deinit");
 
   free(cd);
