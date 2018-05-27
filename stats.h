@@ -12,13 +12,13 @@
 #include <time.h>
 
 struct statistics {
-    unsigned long nusers;                       // n. di utenti registrati
-    unsigned long nonline;                      // n. di utenti connessi
-    unsigned long ndelivered;                   // n. di messaggi testuali consegnati
-    unsigned long nnotdelivered;                // n. di messaggi testuali non ancora consegnati
-    unsigned long nfiledelivered;               // n. di file consegnati
-    unsigned long nfilenotdelivered;            // n. di file non ancora consegnati
-    unsigned long nerrors;                      // n. di messaggi di errore
+    unsigned long nusers;                       ///< n. di utenti registrati
+    unsigned long nonline;                      ///< n. di utenti connessi
+    unsigned long ndelivered;                   ///< n. di messaggi testuali consegnati
+    unsigned long nnotdelivered;                ///< n. di messaggi testuali non ancora consegnati
+    unsigned long nfiledelivered;               ///< n. di file consegnati
+    unsigned long nfilenotdelivered;            ///< n. di file non ancora consegnati
+    unsigned long nerrors;                      ///< n. di messaggi di errore
 };
 
 /* aggiungere qui altre funzioni di utilita' per le statistiche */

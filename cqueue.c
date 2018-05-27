@@ -16,16 +16,16 @@
                   }
 
 typedef struct node {
-  void *v;
-  struct node *next;
+  void *v; ///< Valore del nodo
+  struct node *next; ///< Nodo successivo
 } node_t;
 
 struct cqueue {
-  node_t *head;
-  node_t *tail;
-  int size;
-  pthread_mutex_t mtx;
-  pthread_cond_t cnd_avail;
+  node_t *head; ///< Primo elemento della coda
+  node_t *tail; ///< Ultimo elemento della coda
+  int size; ///< Lunghezza della coda
+  pthread_mutex_t mtx; ///< Mutex d'accesso alla coda
+  pthread_cond_t cnd_avail; ///< Variabile di condizione per l'attesa di elementi
 };
 
 void freeList(node_t *n, cqueue_deinitializer cb) {

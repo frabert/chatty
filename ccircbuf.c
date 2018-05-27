@@ -18,9 +18,11 @@
                   }
 
 struct ccircbuf {
-  size_t len, ptr, num;
-  void **elems;
-  pthread_mutex_t mtx;
+  size_t len; ///< Capienza del buffer
+  size_t ptr; ///< Testa del buffer
+  size_t num; ///< Numero di elementi attualmente contenuti nel buffer
+  void **elems; ///< Contenuto del buffer
+  pthread_mutex_t mtx; ///< Mutex per l'accesso al buffer
 };
 
 ccircbuf_t *ccircbuf_init(size_t len) {

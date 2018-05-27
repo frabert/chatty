@@ -22,16 +22,16 @@
                   }
 
 typedef struct chash_entry {
-  char *key;
-  void *value;
-  struct chash_entry *next;
-  pthread_mutex_t mtx;
+  char *key; ///< Chiave del nodo
+  void *value; ///< Valore del nodo
+  struct chash_entry *next; ///< Nodo successivo
+  pthread_mutex_t mtx; ///< Mutex per l'accesso al nodo
 } chash_entry_t;
 
 struct chash {
-  chash_entry_t *entries[NUM_HASH_ENTRIES];
-  int numkeys;
-  pthread_rwlock_t lock;
+  chash_entry_t *entries[NUM_HASH_ENTRIES]; ///< Tabella dei nodi
+  int numkeys; ///< Numero di nodi attualmente contenuti
+  pthread_rwlock_t lock; ///< Lock R/W per l'accesso alle chiavi
 };
 
 /* Da http://www.cse.yorku.ca/~oz/hash.html */
