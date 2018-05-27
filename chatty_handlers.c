@@ -45,7 +45,7 @@ HANDLER(handle_del_group);
  * \param error Il tipo di errore
  * \param receiver Nick del destinatario
  */
-void makeErrorMessage(message_t *msg, op_t error, const char *receiver, const char *text) {
+void make_error_message(message_t *msg, op_t error, const char *receiver, const char *text) {
   memset(msg, 0, sizeof(message_t));
   msg->hdr.op = error;
   if(receiver != NULL)
@@ -76,6 +76,19 @@ static int send_handle_disconnect(long fd, message_t *msg, payload_t *pl) {
   }
 
   return ret;
+}
+
+void send_error_message(long fd, op_t error, payload_t *pl, const char *receiver, const char *text) {
+  message_t errMsg;
+  make_error_message(&errMsg, error, receiver, text);
+
+  int ret = send_handle_disconnect(fd, &errMsg, pl);
+  HANDLE_FATAL(ret, "send_handle_disconnect");
+  if(ret == 0) {
+    disconnect_client(fd, pl);
+  }
+
+  if(errMsg.data.buf) free(errMsg.data.buf);
 }
 
 /**
@@ -117,6 +130,7 @@ void disconnect_client(long fd, payload_t *pl) {
   pl->chatty_stats.nonline--;
   
   HANDLE_FATAL(pthread_mutex_lock(&(pl->connected_clients_mtx)), "pthread_mutex_lock");
+
   connected_client_t *client = find_connected_client(fd, pl);
   if(client != NULL) {
     client->fd = -1;
@@ -201,13 +215,7 @@ void handle_register(long fd, message_t *msg, payload_t *pl) {
     /* Il nickname era già registrato */
     INCREASE_ERRORS(pl);
 
-    message_t errMsg;
-    makeErrorMessage(&errMsg, OP_NICK_ALREADY, NULL, "Nickname già registrato");
-
-    res = send_handle_disconnect(fd, &errMsg, pl);
-    HANDLE_FATAL(res, "send_handle_disconnect");
-
-    free(errMsg.data.buf);
+    send_error_message(fd, OP_NICK_ALREADY, pl, NULL, "Nickname già registrato");
 
     free_client_descriptor(cd);
   } else {
@@ -243,25 +251,13 @@ static void handle_connect_cb(const char *key, void *value, void *ud) {
     /* Tentativo di connessione ad un nickname non registrato */
     INCREASE_ERRORS(data->pl);
 
-    message_t errMsg;
-    makeErrorMessage(&errMsg, OP_NICK_UNKNOWN, NULL, "Nickname non esistente");
-
-    int ret = send_handle_disconnect(fd, &errMsg, data->pl);
-    HANDLE_FATAL(ret, "send_handle_disconnect");
-
-    free(errMsg.data.buf);
+    send_error_message(fd, OP_NICK_UNKNOWN, data->pl, NULL, "Nickname non esistente");
   } else {
     client_descriptor_t *cd = (client_descriptor_t *)value;
 
     /* Controllo se qualcuno è già connesso con lo stesso nickname */
     if(cd->fd > 0) {
-      message_t errMsg;
-      makeErrorMessage(&errMsg, OP_FAIL, NULL, "Nickname già connesso");
-
-      int ret = send_handle_disconnect(fd, &errMsg, data->pl);
-      HANDLE_FATAL(ret, "send_handle_disconnect");
-
-      free(errMsg.data.buf);
+      send_error_message(fd, OP_FAIL, data->pl, NULL, "Nickname già connesso");
       return;
     }
 
@@ -316,14 +312,8 @@ static void route_message_to_client(const char *key, void *value, void *ud) {
   if(client == NULL) {
     /* Il messaggio è stato instradato verso un utente non esistente */
     INCREASE_ERRORS(pkt->pl);
-
-    message_t errMsg;
-    makeErrorMessage(&errMsg, OP_NICK_UNKNOWN, key, "Nickname non esistente");
-
-    int ret = send_handle_disconnect(pkt->fd, &errMsg, pkt->pl);
-    HANDLE_FATAL(ret, "send_handle_disconnect");
     
-    free(errMsg.data.buf);
+    send_error_message(pkt->fd, OP_NICK_UNKNOWN, pkt->pl, key, "Nickname non esistente");
   } else {
     message_t *msg = calloc(1, sizeof(message_t));
     memcpy(msg, &(pkt->message), sizeof(message_t));
@@ -401,20 +391,14 @@ void handle_post_file(long fd, message_t *msg, payload_t *pl) {}
 void handle_get_file(long fd, message_t *msg, payload_t *pl) {}
 
 static void handle_get_prev_msgs_cb(const char *key, void *value, void *ud) {
-  assert(ub != NULL);
+  assert(ud != NULL);
   struct callback_data *data = (struct callback_data*)ud;
 
   if(value == NULL) {
     /* È stata richiesta la cronologia di un nickname non registrato */
-    INCREASE_ERRORS(pkt->pl);
-
-    message_t errMsg;
-    makeErrorMessage(&errMsg, OP_NICK_UNKNOWN, key, "Nickname non esistente");
-
-    int ret = send_handle_disconnect(data->fd, &errMsg, data->pl);
-    HANDLE_FATAL(ret, "send_handle_disconnect");
+    INCREASE_ERRORS(data->pl);
     
-    free(errMsg.data.buf);
+    send_error_message(data->fd, OP_NICK_UNKNOWN, data->pl, key, "Nickname non esistente");
   } else {
     client_descriptor_t *cd = (client_descriptor_t *)value;
 
@@ -436,7 +420,7 @@ void handle_get_prev_msgs(long fd, message_t *msg, payload_t *pl) {
 
   struct callback_data data;
   data.fd = fd;
-  daa.pl = pl;
+  data.pl = pl;
 
   int ret = chash_get(pl->registered_clients, msg->hdr.sender, handle_get_prev_msgs_cb, &data);
   HANDLE_FATAL(ret, "chash_get");
@@ -457,14 +441,8 @@ void handle_unregister(long fd, message_t *msg, payload_t *pl) {
   if(deletedUser == NULL) {
     /* Tentativo di deregistrazione di un nickname non registrato */
     INCREASE_ERRORS(pl);
-
-    message_t errMsg;
-    makeErrorMessage(&errMsg, OP_NICK_UNKNOWN, msg->hdr.sender, "Nickname non esistente");
-
-    int res = send_handle_disconnect(fd, &errMsg, pl);
-    HANDLE_FATAL(res, "send_handle_disconnect");
     
-    free(errMsg.data.buf);
+    send_error_message(fd, OP_NICK_UNKNOWN, pl, msg->hdr.sender, "Nickname non esistente");
   } else {
     free_client_descriptor(deletedUser);
     message_t ack;

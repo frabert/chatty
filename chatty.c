@@ -214,17 +214,7 @@ void *worker_thread(void *data) {
       disconnect_client(fd, pl);
     } else {
       if(msg.hdr.op >= OP_CLIENT_END) {
-        message_t errMsg;
-        makeErrorMessage(&errMsg, OP_FAIL, NULL, "Messaggio non valido");
-
-        res = sendRequest(fd, &errMsg);
-        HANDLE_FATAL(res, "sendRequest");
-        
-        free(errMsg.data.buf);
-
-        if(res == 0) {
-          disconnect_client(fd, pl);
-        }
+        send_error_message(fd, OP_FAIL, pl, NULL, "Messaggio non valido");
       } else {
         /* Esegue il gestore di richieste in base all'operazione */
         chatty_handlers[msg.hdr.op](fd, &msg, pl);
@@ -248,14 +238,18 @@ int main(int argc, char *argv[]) {
   struct server_cfg cfg;
   memset(&cfg, 0, sizeof(cfg));
 
+  printf("Caricamento file di configurazione... ");
+
   int res = read_cfg_file(argv[2], &cfg);
 
   if(res <= 0) {
     perror("read_cfg_file");
-    fprintf(stderr, "Errore durante la lettura del file di configurazione %s\n",
+    fprintf(stderr, "Errore durante la lettura di %s\n",
       argv[2]);
     return -1;
   }
+
+  printf("fatto.\nInizializzazione del server... ");
 
   setup_signal_handlers();
 
@@ -298,11 +292,13 @@ int main(int argc, char *argv[]) {
   HANDLE_FATAL(res, "listen");
   
   FD_ZERO(&(payload.set));
-  FD_SET(fd_sk, &(payload.set)); 
+  FD_SET(fd_sk, &(payload.set));
 
   for(int i = 0; i < cfg.threadsInPool; i++) {
     pthread_create(threadPool + i, NULL, worker_thread, &payload);
   }
+
+  printf(" pronto. Server in ascolto.\n");
 
   while(!SHOULD_EXIT) {
     if(signalStatus == SIGUSR1) {
@@ -347,7 +343,7 @@ int main(int argc, char *argv[]) {
           if(payload.chatty_stats.nonline >= cfg.maxConnections) {
             /* Numero massimo di connessioni raggiunto, rifiuta la connessione */
             message_t errMsg;
-            makeErrorMessage(&errMsg, OP_FAIL, NULL, "Server occupato");
+            make_error_message(&errMsg, OP_FAIL, NULL, "Server occupato");
             sendRequest(newClient, &errMsg);
             
             free(errMsg.data.buf);
@@ -388,7 +384,7 @@ int main(int argc, char *argv[]) {
   }
   free(threadPool);
   
-  printf("Fatto.\nPulizia in corso... ");
+  printf("fatto.\nPulizia in corso... ");
 
   /* Elimina il file socket */
   unlink(cfg.socketPath);
@@ -398,6 +394,6 @@ int main(int argc, char *argv[]) {
   HANDLE_FATAL(pthread_mutex_destroy(&(payload.stats_mtx)), "pthread_mutex_destroy");
 
   free(payload.connected_clients);
-  printf("Fatto. Bye!\n");
+  printf("fatto. Bye!\n");
   return 0;
 }

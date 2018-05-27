@@ -54,6 +54,7 @@ typedef struct {
  */
 typedef struct {
   fd_set set; ///< Bitset dei descrittori su cui ascoltare
+
   cqueue_t *ready_sockets; ///< Coda dei socket pronti (tipo: int)
   chash_t *registered_clients; ///< Tabella degli utenti registrati (tipo: \ref client_descriptor_t*)
   connected_client_t *connected_clients; ///< Vettore di client connessi
@@ -107,6 +108,17 @@ chatty_request_handler *chatty_handlers[OP_END];
  * \param receiver Nome del destinatario (opzionale)
  * \param text Testo d'errore (opzionale)
  */
-void makeErrorMessage(message_t *msg, op_t error, const char *receiver, const char *text);
+void make_error_message(message_t *msg, op_t error, const char *receiver, const char *text);
+
+/**
+ * \brief Invia un messaggio d'errore ad un client e gestisce automaticamente l'eventuale disconnessione
+ * 
+ * \param fd Il descrittore a cui inviare l'errore
+ * \param error Il codice d'errore da inviare
+ * \param pl Dati di contesto
+ * \param receiver Nome del destinatario (opzionale)
+ * \param text Testo d'errore (opzionale)
+ */
+void send_error_message(long fd, op_t error, payload_t *pl, const char *receiver, const char *text);
 
 #endif
