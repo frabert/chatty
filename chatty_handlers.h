@@ -42,14 +42,6 @@ typedef struct {
 } client_descriptor_t;
 
 /**
- * \brief Rappresenta un pacchetto da inviare a un client
- */
-typedef struct {
-  chash_t *registered_clients; ///< Tabella degli utenti registrati (tipo: \ref client_descriptor_t*)
-  message_t message; ///< Il messaggio da inviare
-} message_packet_t;
-
-/**
  * \brief Rappresenta un client che si è connesso
  */
 typedef struct {
@@ -71,6 +63,16 @@ typedef struct {
   pthread_mutex_t stats_mtx; ///< Mutex per l'accesso alle statistiche
   struct statistics chatty_stats; ///< Statistiche del server
 } payload_t;
+
+/**
+ * \brief Rappresenta un pacchetto da inviare a un client
+ */
+typedef struct {
+  payload_t *pl; ///< Dati di contesto
+  message_t message; ///< Il messaggio da inviare
+  long fd; ///< Il descrittore del mittente
+  int broadcast; ///< 1 se il messaggio è diretto a più utenti, 0 altrimenti
+} message_packet_t;
 
 /**
  * \brief Gestisce la disconnessione di un client
@@ -102,8 +104,9 @@ chatty_request_handler *chatty_handlers[OP_END];
  * 
  * \param msg Messaggio da riempire
  * \param error Tipo di errore
- * \param receiver Nome del destinatario
+ * \param receiver Nome del destinatario (opzionale)
+ * \param text Testo d'errore (opzionale)
  */
-void makeErrorMessage(message_t *msg, op_t error, const char *receiver);
+void makeErrorMessage(message_t *msg, op_t error, const char *receiver, const char *text);
 
 #endif

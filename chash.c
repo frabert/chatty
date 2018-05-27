@@ -46,7 +46,7 @@ static size_t hash(const char *str) {
 }
 
 chash_t *chash_init() {
-  chash_t *ht = malloc(sizeof(chash_t));
+  chash_t *ht = calloc(1, sizeof(chash_t));
   if(ht == NULL) return NULL;
 
   memset(ht, 0, sizeof(chash_t));
@@ -141,7 +141,7 @@ int chash_set(chash_t *table, const char *key, void *value, void **oldValue) {
     if(value == NULL) {
       goto end;
     }
-    chash_entry_t *newEntry = malloc(sizeof(chash_entry_t));
+    chash_entry_t *newEntry = calloc(1, sizeof(chash_entry_t));
     if(newEntry == NULL) {
       ret = pthread_rwlock_unlock(&(table->lock));
       if(ret != 0) {
@@ -150,7 +150,7 @@ int chash_set(chash_t *table, const char *key, void *value, void **oldValue) {
       return -1;
     }
 
-    newEntry->key = malloc(sizeof(char) * keyLen);
+    newEntry->key = calloc(keyLen + 1, sizeof(char));
     if(newEntry->key == NULL) {
       ret = pthread_rwlock_unlock(&(table->lock));
       if(ret != 0) {
@@ -159,7 +159,7 @@ int chash_set(chash_t *table, const char *key, void *value, void **oldValue) {
       return -1;
     }
 
-    memcpy(newEntry->key, key, sizeof(char) * keyLen);
+    strncpy(newEntry->key, key, keyLen);
     newEntry->value = value;
     newEntry->next = NULL;
 
@@ -188,13 +188,14 @@ int chash_set(chash_t *table, const char *key, void *value, void **oldValue) {
         return -1;
       }
 
-      newEntry->key = malloc(sizeof(char) * keyLen);
+      newEntry->key = calloc(keyLen + 1, sizeof(char));
       if(newEntry->key == NULL) {
         ret = pthread_rwlock_unlock(&(table->lock));
         CHECK_RET
         return -1;
       }
-      memcpy(newEntry->key, key, sizeof(char) * keyLen);
+      
+      strncpy(newEntry->key, key, keyLen);
       newEntry->value = value;
       newEntry->next = table->entries[idx];
       ret = pthread_mutex_init(&(newEntry->mtx), NULL);
@@ -241,7 +242,7 @@ int chash_set_if_empty(chash_t *table, const char *key, void *value) {
     if(value == NULL) {
       goto end;
     }
-    chash_entry_t *newEntry = calloc(sizeof(chash_entry_t), 1);
+    chash_entry_t *newEntry = calloc(1, sizeof(chash_entry_t));
     if(newEntry == NULL) {
       ret = pthread_rwlock_unlock(&(table->lock));
       if(ret != 0) {
@@ -250,7 +251,7 @@ int chash_set_if_empty(chash_t *table, const char *key, void *value) {
       return -1;
     }
 
-    newEntry->key = malloc(sizeof(char) * keyLen);
+    newEntry->key = calloc(keyLen + 1, sizeof(char));
     if(newEntry->key == NULL) {
       ret = pthread_rwlock_unlock(&(table->lock));
       if(ret != 0) {
@@ -259,7 +260,7 @@ int chash_set_if_empty(chash_t *table, const char *key, void *value) {
       return -1;
     }
 
-    memcpy(newEntry->key, key, sizeof(char) * keyLen);
+    strncpy(newEntry->key, key, keyLen);
     newEntry->value = value;
     newEntry->next = NULL;
 
@@ -276,20 +277,21 @@ int chash_set_if_empty(chash_t *table, const char *key, void *value) {
         goto end;
       }
       
-      chash_entry_t *newEntry = malloc(sizeof(chash_entry_t));
+      chash_entry_t *newEntry = calloc(1, sizeof(chash_entry_t));
       if(newEntry == NULL) {
         ret = pthread_rwlock_unlock(&(table->lock));
         CHECK_RET
         return -1;
       }
 
-      newEntry->key = malloc(sizeof(char) * keyLen);
+      newEntry->key = calloc(keyLen + 1, sizeof(char));
       if(newEntry->key == NULL) {
         ret = pthread_rwlock_unlock(&(table->lock));
         CHECK_RET
         return -1;
       }
-      memcpy(newEntry->key, key, sizeof(char) * keyLen);
+      strncpy(newEntry->key, key, keyLen);
+
       newEntry->value = value;
       newEntry->next = table->entries[idx];
       ret = pthread_mutex_init(&(newEntry->mtx), NULL);
@@ -361,19 +363,21 @@ int chash_keys(chash_t *ht, char ***keys) {
 
   int numkeys = ht->numkeys;
 
-  *keys = malloc(sizeof(char **) * numkeys);
+  *keys = calloc(numkeys, sizeof(char **));
   if(*keys == NULL) {
     return -1;
   }
   int j = 0;
+  char **arr = *keys;
 
   for(size_t i = 0; i < NUM_HASH_ENTRIES; i++) {
     if(ht->entries[i] != NULL) {
       chash_entry_t *ptr = ht->entries[i];
       while(ptr != NULL) {
-        int len = strlen(ptr->key);
-        *keys[j] = malloc(sizeof(char) * (len + 1));
-        memcpy(*keys[j], ptr->key, len + 1);
+        size_t len = strlen(ptr->key);
+        arr[j] = calloc(len + 1, sizeof(char));
+        strncpy(arr[j], ptr->key, len);
+        j++;
 
         ptr = ptr->next;
       }

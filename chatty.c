@@ -64,37 +64,6 @@ void free_client_descriptor(void *ptr) {
 }
 
 /**
- * \brief Instrada un messaggio verso un client
- * 
- * \param key Il nome utente del client verso cui instradare il messaggio
- * \param value Puntatore al descrittore del client verso cui instradare
- * \param ud Puntatore al pacchetto da instradare
- */
-static void route_message_to_client(const char *key, void *value, void *ud) {
-  client_descriptor_t *client = (client_descriptor_t*)value;
-  message_packet_t *pkt = (message_packet_t*)ud;
-
-  /* Se il ricevente e il mittente del messaggio coincidessero, si creerebbe una deadlock */
-  assert(pkt->message.hdr.sender == NULL || (strcmp(key, pkt->message.hdr.sender) != 0));
-
-  if(client == NULL) {
-    /* Il messaggio è stato instradato verso un utente non esistente */
-
-    if(pkt->message.hdr.sender == NULL) {
-      /* Il server ha cercato di inviare un messaggio ad un client non esistente, ignoriamo */
-      return;
-    }
-    message_packet_t errorPacket;
-    makeErrorMessage(&(errorPacket.message), OP_NICK_UNKNOWN, key);
-
-    HANDLE_FATAL(chash_get(pkt->registered_clients, pkt->message.hdr.sender, route_message_to_client, &errorPacket), "chash_get");
-  } else {
-    
-    //HANDLE_FATAL(sendRequest(client->fd, &(pkt->message)), "sendRequest");
-  }
-}
-
-/**
  * \brief Callback che legge le impostazioni
  * 
  * \param name Nome del parametro
@@ -169,7 +138,7 @@ static int read_cfg_file(const char *file, struct server_cfg *cfg) {
   // Torno all'inizio per leggerlo interamente
   fseek(f, 0, SEEK_SET);
 
-  char *string = (char *)malloc(fsize + 1);
+  char *string = calloc(fsize + 1, sizeof(char));
   if(string == NULL) {
     return -1;
   }
@@ -246,10 +215,12 @@ void *worker_thread(void *data) {
     } else {
       if(msg.hdr.op >= OP_CLIENT_END) {
         message_t errMsg;
-        makeErrorMessage(&errMsg, OP_FAIL, NULL);
+        makeErrorMessage(&errMsg, OP_FAIL, NULL, "Messaggio non valido");
 
         res = sendRequest(fd, &errMsg);
         HANDLE_FATAL(res, "sendRequest");
+        
+        free(errMsg.data.buf);
 
         if(res == 0) {
           disconnect_client(fd, pl);
@@ -308,8 +279,8 @@ int main(int argc, char *argv[]) {
     payload.connected_clients[i].fd = -1;
   }
 
-  pthread_t *threadPool = malloc(sizeof(pthread_t) * cfg.threadsInPool);
-  HANDLE_NULL(threadPool, "malloc");
+  pthread_t *threadPool = calloc(cfg.threadsInPool, sizeof(pthread_t));
+  HANDLE_NULL(threadPool, "calloc");
 
   int fd_sk;
   struct sockaddr_un sa;
@@ -375,8 +346,11 @@ int main(int argc, char *argv[]) {
           if(payload.chatty_stats.nonline >= cfg.maxConnections) {
             /* Numero massimo di connessioni raggiunto, rifiuta la connessione */
             message_t errMsg;
-            makeErrorMessage(&errMsg, OP_FAIL, "");
+            makeErrorMessage(&errMsg, OP_FAIL, NULL, "Server occupato");
             sendRequest(newClient, &errMsg);
+            
+            free(errMsg.data.buf);
+            
             payload.chatty_stats.nerrors++;
           } else {
             payload.chatty_stats.nonline++;
@@ -386,8 +360,8 @@ int main(int argc, char *argv[]) {
           HANDLE_FATAL(pthread_mutex_unlock(&(payload.stats_mtx)), "pthread_mutex_unlock");
         } else {
           /* Un client già connesso è pronto */
-          long *elem = malloc(sizeof(long));
-          HANDLE_NULL(elem, "malloc");
+          long *elem = calloc(1, sizeof(long));
+          HANDLE_NULL(elem, "calloc");
 
           *elem = i;
 
@@ -401,8 +375,8 @@ int main(int argc, char *argv[]) {
   /* Mette in coda un messaggio speciale per segnalare ai thread
      di terminare */
   cqueue_clear(payload.ready_sockets, free);
-  long *elem = malloc(sizeof(long));
-  HANDLE_NULL(elem, "malloc");
+  long *elem = calloc(1, sizeof(long));
+  HANDLE_NULL(elem, "calloc");
   *elem = -1;
   cqueue_push(payload.ready_sockets, elem);
 

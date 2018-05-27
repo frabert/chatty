@@ -123,7 +123,7 @@ char *parseIdent(char **str) {
       *str = *str + 1;
       len++;
     }
-    char *res = (char *)malloc(sizeof(char) * len + 1);
+    char *res = (char *)calloc(len + 1, sizeof(char));
     memcpy(res, start, sizeof(char) * len);
     res[len] = '\0';
 
@@ -151,7 +151,7 @@ int parseString(char **str, char **out) {
     }
     *str = *str + 1;
 
-    *out = (char *)malloc(sizeof(char) * len + 1);
+    *out = calloc(len + 1, sizeof(char));
     memcpy(*out, start, sizeof(char) * len);
     (*out)[len] = '\0';
     return 1;
@@ -165,7 +165,7 @@ int parseString(char **str, char **out) {
         *str = *str + 1;
       }
 
-      *out = (char *)malloc(sizeof(char) * len + 1);
+      *out = calloc(len + 1, sizeof(char));
       memcpy(*out, start, sizeof(char) * len);
       (*out)[len] = '\0';
       return 1;

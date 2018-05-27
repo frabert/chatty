@@ -24,14 +24,13 @@ struct ccircbuf {
 };
 
 ccircbuf_t *ccircbuf_init(size_t len) {
-  ccircbuf_t *buf = malloc(sizeof(ccircbuf_t));
+  ccircbuf_t *buf = calloc(1, sizeof(ccircbuf_t));
   if(buf == NULL) {
     return NULL;
   }
 
-  memset(buf, 0, sizeof(ccircbuf_t));
   buf->len = len;
-  buf->elems = malloc(sizeof(void*) * len);
+  buf->elems = calloc(sizeof(void*), len);
 
   if(buf->elems == NULL) {
     return NULL;
@@ -70,14 +69,14 @@ int ccircbuf_get_elems(ccircbuf_t* buf, void ***dest) {
   int ret = pthread_mutex_lock(&(buf->mtx));
   CHECK_RET
 
-  *dest = malloc(sizeof(void*) * buf->len);
+  *dest = calloc(sizeof(void*), buf->len);
   if(*dest == NULL) {
     return -1;
   }
 
   for(size_t i = 0; i < buf->num; i++) {
     void *elem = buf->elems[(i + buf->ptr) % buf->len];
-    *dest[i] = elem;
+    (*dest)[i] = elem;
   }
 
   return buf->num;

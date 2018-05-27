@@ -36,7 +36,7 @@ void freeList(node_t *n, cqueue_deinitializer cb) {
 }
 
 cqueue_t *cqueue_init() {
-  cqueue_t *cq = malloc(sizeof(cqueue_t));
+  cqueue_t *cq = calloc(1, sizeof(cqueue_t));
   if(!cq) return NULL;
   int ret;
   cq->head = NULL;
@@ -85,7 +85,7 @@ int cqueue_push(cqueue_t *cq, void *v) {
 
   if(cq->tail == NULL) {
     /* Caso in cui la coda sia ancora vuota */
-    cq->head = malloc(sizeof(node_t));
+    cq->head = calloc(1, sizeof(node_t));
     if(cq->head == NULL) {
       return -1;
     }
@@ -95,7 +95,7 @@ int cqueue_push(cqueue_t *cq, void *v) {
     cq->size = 1;
   } else {
     /* Caso in cui la coda abbia più di un elemento */
-    node_t *newElem = malloc(sizeof(node_t));
+    node_t *newElem = calloc(1, sizeof(node_t));
     if(newElem == NULL) {
       return -1;
     }

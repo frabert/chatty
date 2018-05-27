@@ -18,7 +18,8 @@
 /// Massima lunghezza di un path nei file di configurazione
 #define MAX_PATH_LEN 128
 
-/* aggiungere altre define qui */
+/// Se 0, OP_USRLIST invierà la lista degli utenti _registrati_, se 1 quella degli utenti _online_
+#define SEND_ONLINE_USERS 0
 
 
 

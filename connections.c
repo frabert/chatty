@@ -86,7 +86,7 @@ int readDataHeader(long fd, message_data_hdr_t *datahdr) {
 int readData(long fd, message_data_t *data) {
   int res;
   if((res = readDataHeader(fd, &(data->hdr))) > 0) {
-    void *buf = malloc(data->hdr.len);
+    void *buf = calloc(data->hdr.len, sizeof(char));
     if(buf == NULL) {
       return -1;
     }
