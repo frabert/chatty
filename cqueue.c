@@ -30,8 +30,8 @@ struct cqueue {
 
 void freeList(node_t *n, cqueue_deinitializer cb) {
   if(n == NULL) { return; }
-  if(n->next != NULL) { freeList(n->next, cb); }
-  if(cb != NULL) { cb(n->v); }
+  if(n->next != NULL) { freeList(n->next, cb); n->next = NULL; }
+  if(cb != NULL) { cb(n->v); n->v = NULL; }
   free(n);
 }
 
@@ -64,6 +64,7 @@ int cqueue_deinit(cqueue_t *cq, cqueue_deinitializer cb) {
   }
 
   freeList(cq->head, cb);
+  
   int ret = 0;
   if((ret = pthread_mutex_destroy(&cq->mtx)) != 0) {
     errno = ret;
@@ -171,12 +172,7 @@ int cqueue_clear(cqueue_t *cq, cqueue_deinitializer cb) {
   int ret = pthread_mutex_lock(&(cq->mtx));
   CHECK_RET
 
-  node_t *ptr = cq->head;
-  while(ptr != NULL) {
-    node_t *next = ptr->next;
-    if(cb != NULL) cb(ptr->v);
-    ptr = next;
-  }
+  freeList(cq->head, cb);
   cq->head = NULL;
   cq->tail = NULL;
 

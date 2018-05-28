@@ -81,7 +81,7 @@ all: $(TARGETS)
 
 # Test valgrind
 memcheck: chatty
-	valgrind -v --leak-check=full --track-origins=yes ./chatty -f DATA/chatty.conf1
+	valgrind -v --show-leak-kinds=all --leak-check=full --track-origins=yes ./chatty -f DATA/chatty.conf1
 
 chatty: chatty.o chatty_handlers.o libchatty.a $(INCLUDE_FILES)
 	$(CC) $(CFLAGS) $(INCLUDES) $(OPTFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)

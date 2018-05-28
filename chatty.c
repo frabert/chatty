@@ -175,6 +175,7 @@ static void setup_signal_handlers() {
   HANDLE_FATAL(sigaction(SIGQUIT, &s, NULL), "sigaction");
   HANDLE_FATAL(sigaction(SIGTERM, &s, NULL), "sigaction");
   HANDLE_FATAL(sigaction(SIGUSR1, &s, NULL), "sigaction");
+
   s.sa_handler = SIG_IGN; /* Ignora SIGPIPE */
   HANDLE_FATAL(sigaction(SIGPIPE, &s, NULL), "sigaction");
 }

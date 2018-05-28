@@ -317,12 +317,20 @@ static void route_message_to_client(const char *key, void *value, void *ud) {
   } else {
     message_t *msg = calloc(1, sizeof(message_t));
     memcpy(msg, &(pkt->message), sizeof(message_t));
+    msg->data.buf = calloc(msg->data.hdr.len, sizeof(char));
+    HANDLE_NULL(msg->data.buf, "calloc");
 
-    message_t *oldMsg;
+    memcpy(msg->data.buf, pkt->message.data.buf, msg->data.hdr.len);
+
+    message_t *oldMsg = NULL;
 
     int ret = ccircbuf_insert(client->message_buffer, msg, (void*)&oldMsg);
     HANDLE_FATAL(ret, "ccircbuf_insert");
-    free(oldMsg);
+
+    if(oldMsg != NULL) {
+      free(oldMsg->data.buf);
+      free(oldMsg);
+    }
     if(client->fd > 0) {
       /* Il client è connesso, gli invio il messaggio */
       message_t newMsg;
@@ -332,7 +340,6 @@ static void route_message_to_client(const char *key, void *value, void *ud) {
         newMsg.hdr.op = TXT_MESSAGE;
       } else {
         newMsg.hdr.op = FILE_MESSAGE;
-        memcpy(newMsg.data.hdr.receiver, key, MAX_NAME_LENGTH + 1);
       }
 
       ret = send_handle_disconnect(client->fd, &newMsg, pkt->pl);
@@ -355,6 +362,19 @@ static void route_message_to_client(const char *key, void *value, void *ud) {
 void handle_post_txt(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == POSTTXT_OP);
 
+  connected_client_t *client = find_connected_client(fd, pl);
+  if(client == NULL) {
+    /* Un client non connesso ha tentato di inviare un messaggio */
+    send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso");
+    return;
+  }
+
+  if(msg->data.hdr.len > pl->cfg->maxMsgSize) {
+    /* Il messaggio è troppo lungo */
+    send_error_message(fd, OP_MSG_TOOLONG, pl, NULL, "Messaggio testuale troppo lungo");
+    return;
+  }
+
   message_packet_t pkt;
   memset(&pkt, 0, sizeof(message_packet_t));
   pkt.pl = pl;
@@ -367,6 +387,19 @@ void handle_post_txt(long fd, message_t *msg, payload_t *pl) {
 
 void handle_post_txt_all(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == POSTTXTALL_OP);
+
+  connected_client_t *client = find_connected_client(fd, pl);
+  if(client == NULL) {
+    /* Un client non connesso ha tentato di inviare un messaggio */
+    send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso");
+    return;
+  }
+
+  if(msg->data.hdr.len > pl->cfg->maxMsgSize) {
+    /* Il messaggio è troppo lungo */
+    send_error_message(fd, OP_MSG_TOOLONG, pl, NULL, "Messaggio testuale troppo lungo");
+    return;
+  }
 
   message_packet_t pkt;
   memset(&pkt, 0, sizeof(message_packet_t));
@@ -386,9 +419,138 @@ void handle_post_txt_all(long fd, message_t *msg, payload_t *pl) {
   HANDLE_FATAL(res, "send_handle_disconnect");
 }
 
-void handle_post_file(long fd, message_t *msg, payload_t *pl) {}
+/**
+ * \brief Restituisce il nome di un file senza il percorso
+ * 
+ * Percorre all'indietro il percorso del file e si ferma al primo '/' trovato
+ * 
+ * \param file_path Il percorso da cui estrarre il nome
+ * \param len Restituisce la lunghezza del nome
+ * \return const char* L'indirizzo al primo carattere del nome del file.
+ */
+static const char *strip_file_name(const char * file_path, size_t *len) {
+  size_t path_len = strlen(file_path);
+  *len = 0;
+  const char *ptr = file_path + path_len;
+  while(ptr > file_path) {
+    ptr--;
+    *len = *len + 1;
+    if(*ptr == '/') {
+      ptr++;
+    *len = *len - 1;
+      break;
+    }
+  }
+  return ptr;
+}
 
-void handle_get_file(long fd, message_t *msg, payload_t *pl) {}
+void handle_post_file(long fd, message_t *msg, payload_t *pl) {
+  assert(msg->hdr.op == POSTFILE_OP);
+
+  connected_client_t *client = find_connected_client(fd, pl);
+  if(client == NULL) {
+    /* Un client non connesso ha tentato di inviare un file */
+    send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso");
+    return;
+  }
+
+  message_data_t file_data;
+  memset(&file_data, 0, sizeof(message_data_t));
+  int ret = readData(fd, &file_data);
+  HANDLE_FATAL(ret, "readData");
+  if(ret == 0) {
+    disconnect_client(fd, pl);
+    return;
+  }
+
+  if(file_data.hdr.len > pl->cfg->maxFileSize) {
+    /* Il file è troppo lungo */
+    send_error_message(fd, OP_MSG_TOOLONG, pl, NULL, "File troppo lungo");
+    return;
+  }
+
+  size_t file_name_len = 0, dir_path_len = strnlen(pl->cfg->dirName, MAX_PATH_LEN);
+  const char *file_name = strip_file_name(msg->data.buf, &file_name_len);
+
+  /* Crea il path completo del file nella directory specificata nelle impostazioni */
+  char *file_path = calloc(file_name_len + dir_path_len + 2, sizeof(char));
+  strncpy(file_path, pl->cfg->dirName, dir_path_len);
+  strncat(file_path, "/", 1);
+  strncat(file_path, file_name, file_name_len);
+
+  /* Scrive il file nella directory */
+  FILE *file = fopen(file_path, "wb");
+  HANDLE_NULL(file, "fopen");
+  fwrite(file_data.buf, sizeof(char), file_data.hdr.len, file);
+  fclose(file);
+  file = NULL;
+
+  free(file_path);
+  free(file_data.buf);
+
+  message_packet_t pkt;
+  memset(&pkt, 0, sizeof(message_packet_t));
+  pkt.pl = pl;
+  pkt.message = *msg;
+  pkt.fd = fd;
+
+  pkt.message.data.buf = file_name;
+  pkt.message.data.hdr.len = file_name_len + 1;
+
+  ret = chash_get(pl->registered_clients, msg->data.hdr.receiver, route_message_to_client, &pkt);
+  HANDLE_FATAL(ret, "chash_get");
+}
+
+void handle_get_file(long fd, message_t *msg, payload_t *pl) {
+  assert(msg->hdr.op == GETFILE_OP);
+
+  connected_client_t *client = find_connected_client(fd, pl);
+  if(client == NULL) {
+    /* Un client non connesso ha tentato di inviare un file */
+    send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso");
+    return;
+  }
+
+  size_t file_name_len = msg->data.hdr.len;
+  size_t dir_path_len = strnlen(pl->cfg->dirName, MAX_PATH_LEN);
+
+  /* Crea il path completo del file nella directory specificata nelle impostazioni */
+  char *file_path = calloc(file_name_len + dir_path_len + 2, sizeof(char));
+  strncpy(file_path, pl->cfg->dirName, dir_path_len);
+  strncat(file_path, "/", 1);
+  strncat(file_path, msg->data.buf, file_name_len);
+
+  /* Scrive il file nella directory */
+  FILE *file = fopen(file_path, "wb");
+  free(file_path);
+  if(file == NULL) {
+    send_error_message(fd, OP_FAIL, pl, NULL, "Impossibile accedere al file richiesto");
+    return;
+  }
+
+  fseek(file, 0, SEEK_END);
+  /* Vado fino in fondo al file per sapere quanto è lungo */
+  long fsize = ftell(file);
+  /* Torno all'inizio per leggerlo interamente */
+  fseek(file, 0, SEEK_SET);
+
+  /* Alloco il buffer di risposta */
+  char *data = calloc(fsize, sizeof(char));
+  HANDLE_NULL(data, "calloc");
+  
+  fread(data, fsize, 1, file);
+  fclose(file);
+  file = NULL;
+
+  message_t answer;
+  memset(&answer, 0, sizeof(message_t));
+  answer.data.buf = data;
+  answer.data.hdr.len = fsize;
+  answer.hdr.op = OP_OK;
+
+  send_handle_disconnect(fd, &answer, pl);
+  free(data);
+}
 
 static void handle_get_prev_msgs_cb(const char *key, void *value, void *ud) {
   assert(ud != NULL);
@@ -405,13 +567,30 @@ static void handle_get_prev_msgs_cb(const char *key, void *value, void *ud) {
     void **elems;
     int numMsgs = ccircbuf_get_elems(cd->message_buffer, &elems);
     HANDLE_FATAL(numMsgs, "ccircbuf_get_elems");
+
+    size_t *buf = calloc(1, sizeof(size_t));
+    *buf = numMsgs;
+
+    message_t ack;
+    memset(&ack, 0, sizeof(message_t));
+    ack.hdr.op = OP_OK;
+    ack.data.buf = buf;
+    ack.data.hdr.len = sizeof(size_t);
+
+    int ret = send_handle_disconnect(data->fd, &ack, data->pl);
+    free(buf);
+    if(ret == 0) {
+      return;
+    }
+
+    int disconnected = 0;
     
     for(int i = 0; i < numMsgs; i++) {
       message_t *elem = (message_t*)elems[i];
 
-      /* TODO */
-
-      free(elem);
+      if(!disconnected) {
+        disconnected = send_handle_disconnect(data->fd, elem, data->pl) == 0;
+      }
     }
 
     free(elems);
@@ -420,6 +599,13 @@ static void handle_get_prev_msgs_cb(const char *key, void *value, void *ud) {
 
 void handle_get_prev_msgs(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == GETPREVMSGS_OP);
+
+  connected_client_t *client = find_connected_client(fd, pl);
+  if(client == NULL) {
+    /* Un client non connesso ha tentato di richiedere la cronologia */
+    send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso");
+    return;
+  }
 
   struct callback_data data;
   data.fd = fd;

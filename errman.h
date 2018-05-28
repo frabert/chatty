@@ -18,7 +18,7 @@
  * 
  * Il messaggio d'errore conterrà anche un riferimento a dove è stato generato
  */
-#define HANDLE_FATAL(x, s) if((x) < 0) { \
+#define HANDLE_FATAL(x, s) if((x) < 0 && errno != EPIPE) { \
                             fprintf(stderr, "%s:%d ", __FILE__, __LINE__); \
                             perror(s); \
                             exit(EXIT_FAILURE); }
@@ -28,7 +28,7 @@
  * 
  * Il messaggio d'errore conterrà anche un riferimento a dove è stato generato
  */
-#define HANDLE_NULL(x, s) if ((x) == NULL) { \
+#define HANDLE_NULL(x, s) if ((x) == NULL && errno != EPIPE) { \
                           fprintf(stderr, "%s: %d ", __FILE__, __LINE__); \
                           perror(s); \
                           exit(EXIT_FAILURE); }

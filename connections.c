@@ -93,6 +93,8 @@ int readData(long fd, message_data_t *data) {
 
     if((res = readn(fd, buf, data->hdr.len)) > 0) {
       data->buf = buf;
+    } else {
+      free(buf);
     }
     return res;
   } else {
