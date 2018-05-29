@@ -9,6 +9,8 @@
 #ifndef ERRMAN_H_
 #define ERRMAN_H_
 
+#define CHATTY_VERBOSE 1
+
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -18,7 +20,7 @@
  * 
  * Il messaggio d'errore conterrà anche un riferimento a dove è stato generato
  */
-#define HANDLE_FATAL(x, s) if((x) < 0 && errno != EPIPE) { \
+#define HANDLE_FATAL(x, s) if((x) < 0 && errno != EPIPE && errno != ECONNABORTED && errno != ECONNREFUSED && errno != ECONNRESET) { \
                             fprintf(stderr, "%s:%d ", __FILE__, __LINE__); \
                             perror(s); \
                             exit(EXIT_FAILURE); }
@@ -32,5 +34,15 @@
                           fprintf(stderr, "%s: %d ", __FILE__, __LINE__); \
                           perror(s); \
                           exit(EXIT_FAILURE); }
+
+#if CHATTY_VERBOSE
+#  define  LOG_ERR(format, ...) fprintf(stderr, "%s:%d - \033[0;31m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)
+#  define LOG_INFO(format, ...) fprintf(stdout, "%s:%d - \033[0;32m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)
+#  define LOG_WARN(format, ...) fprintf(stdout, "%s:%d - \033[1;33m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)
+#else
+#  define LOG_ERR (format, ...)
+#  define LOG_INFO(format, ...)
+#  define LOG_WARN(format, ...)
+#endif
 
 #endif /* ERRMAN_H_ */

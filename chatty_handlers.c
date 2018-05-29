@@ -16,27 +16,10 @@
 #include "connections.h"
 #include "chatty_handlers.h"
 
-/// Dichiara un gestore di richieste
-#define HANDLER(x) void x(long fd, message_t *msg, payload_t *pl)
-
 /// Aumenta in maniera atomica il numero di errori inviati
 #define INCREASE_ERRORS(pl) HANDLE_FATAL(pthread_mutex_lock(&((pl)->stats_mtx)), "pthread_mutex_lock"); \
                             (pl)->chatty_stats.nerrors++; \
                             HANDLE_FATAL(pthread_mutex_unlock(&((pl)->stats_mtx)), "pthread_mutex_unlock");
-
-HANDLER(handle_register);
-HANDLER(handle_connect);
-HANDLER(handle_post_txt);
-HANDLER(handle_post_txt_all);
-HANDLER(handle_post_file);
-HANDLER(handle_get_file);
-HANDLER(handle_get_prev_msgs);
-HANDLER(handle_usr_list);
-HANDLER(handle_unregister);
-HANDLER(handle_disconnect);
-HANDLER(handle_create_group);
-HANDLER(handle_add_group);
-HANDLER(handle_del_group);
 
 /**
  * \brief Inizializza un messaggio d'errore
@@ -133,7 +116,9 @@ void disconnect_client(long fd, payload_t *pl) {
 
   connected_client_t *client = find_connected_client(fd, pl);
   if(client != NULL) {
+    LOG_INFO("Disconnessione di '%s'", client->nick);
     client->fd = -1;
+    client->nick[0] = '\0';
     chash_get(pl->registered_clients, client->nick, disconnect_client_cb, pl);
   }
   HANDLE_FATAL(pthread_mutex_unlock(&(pl->connected_clients_mtx)), "pthread_mutex_unlock");
@@ -192,41 +177,6 @@ static void send_user_list(int fd, payload_t *pl) {
 }
 
 /**
- * \brief Registra il nickname \ref nick
- * 
- * \param msg Il messaggio ricevuto
- * \param fd Il descrittore a cui inviare il messaggio d'errore
- *           nel caso in cui il nickname fosse già registrato
- * \param pl Informazioni di contesto
- */
-void handle_register(long fd, message_t *msg, payload_t *pl) {
-  assert(msg->hdr.op == REGISTER_OP);
-
-  client_descriptor_t *cd = calloc(1, sizeof(client_descriptor_t));
-  cd->message_buffer = ccircbuf_init(pl->cfg->maxHistMsgs);
-  HANDLE_NULL(cd->message_buffer, "ccircbuf_init");
-
-  cd->fd = -1;
-
-  int res = chash_set_if_empty(pl->registered_clients, msg->hdr.sender, cd);
-  HANDLE_FATAL(res, "chash_set_if_empty");
-
-  if(res != 0) {
-    /* Il nickname era già registrato */
-    INCREASE_ERRORS(pl);
-
-    send_error_message(fd, OP_NICK_ALREADY, pl, NULL, "Nickname già registrato");
-
-    free_client_descriptor(cd);
-  } else {
-    HANDLE_FATAL(pthread_mutex_lock(&(pl->stats_mtx)), "pthread_mutex_lock");
-    pl->chatty_stats.nusers++;
-    HANDLE_FATAL(pthread_mutex_unlock(&(pl->stats_mtx)), "pthread_mutex_unlock");
-    send_user_list(fd, pl);
-  }
-}
-
-/**
  * \brief Dati passati dalle funzioni di gestione alle callback
  */
 struct callback_data {
@@ -249,22 +199,20 @@ static void handle_connect_cb(const char *key, void *value, void *ud) {
   int fd = data->fd;
   if(value == NULL) {
     /* Tentativo di connessione ad un nickname non registrato */
+    LOG_WARN("Tentativo di connessione di '%s' fallito", key);
+
     INCREASE_ERRORS(data->pl);
 
     send_error_message(fd, OP_NICK_UNKNOWN, data->pl, NULL, "Nickname non esistente");
+    return;
   } else {
     client_descriptor_t *cd = (client_descriptor_t *)value;
-
-    /* Controllo se qualcuno è già connesso con lo stesso nickname */
-    if(cd->fd > 0) {
-      send_error_message(fd, OP_FAIL, data->pl, NULL, "Nickname già connesso");
-      return;
-    }
 
     cd->fd = fd;
     for(int i = 0; i < data->pl->cfg->maxConnections; i++) {
       connected_client_t *client = &(data->pl->connected_clients[i]);
       if(client->fd < 0) {
+        LOG_INFO("Utente '%s' connesso", key);
         client->fd = fd;
         memset(client->nick, 0, MAX_NAME_LENGTH + 1);
         strncpy(client->nick, key, MAX_NAME_LENGTH);
@@ -299,6 +247,52 @@ void handle_connect(long fd, message_t *msg, payload_t *pl) {
 }
 
 /**
+ * \brief Registra il nickname \ref nick
+ * 
+ * \param msg Il messaggio ricevuto
+ * \param fd Il descrittore a cui inviare il messaggio d'errore
+ *           nel caso in cui il nickname fosse già registrato
+ * \param pl Informazioni di contesto
+ */
+void handle_register(long fd, message_t *msg, payload_t *pl) {
+  assert(msg->hdr.op == REGISTER_OP);
+
+  client_descriptor_t *cd = calloc(1, sizeof(client_descriptor_t));
+  cd->message_buffer = ccircbuf_init(pl->cfg->maxHistMsgs);
+  HANDLE_NULL(cd->message_buffer, "ccircbuf_init");
+
+  cd->fd = -1;
+
+  int res = chash_set_if_empty(pl->registered_clients, msg->hdr.sender, cd);
+  HANDLE_FATAL(res, "chash_set_if_empty");
+
+  if(res != 0) {
+    /* Il nickname era già registrato */
+    LOG_WARN("Tentativo di registrazione di '%s' fallito", msg->hdr.sender);
+
+    INCREASE_ERRORS(pl);
+
+    send_error_message(fd, OP_NICK_ALREADY, pl, NULL, "Nickname già registrato");
+
+    free_client_descriptor(cd);
+  } else {
+    LOG_INFO("Utente '%s' registrato", msg->hdr.sender);
+
+    HANDLE_FATAL(pthread_mutex_lock(&(pl->stats_mtx)), "pthread_mutex_lock");
+    pl->chatty_stats.nusers++;
+    HANDLE_FATAL(pthread_mutex_unlock(&(pl->stats_mtx)), "pthread_mutex_unlock");
+
+    /* Oltre a registrare il nick, connette il client */
+    struct callback_data data;
+    data.pl = pl;
+    data.fd = fd;
+
+    int ret = chash_get(pl->registered_clients, msg->hdr.sender, handle_connect_cb, &data);
+    HANDLE_FATAL(ret, "chash_get");
+  }
+}
+
+/**
  * \brief Instrada un messaggio verso un client
  * 
  * \param key Il nome utente del client verso cui instradare il messaggio
@@ -312,9 +306,13 @@ static void route_message_to_client(const char *key, void *value, void *ud) {
   if(client == NULL) {
     /* Il messaggio è stato instradato verso un utente non esistente */
     INCREASE_ERRORS(pkt->pl);
+
+    LOG_WARN("'%s' ha tentato di inviare un messaggio ad un utente inesistente ('%s')", pkt->message.hdr.sender, key);
     
     send_error_message(pkt->fd, OP_NICK_UNKNOWN, pkt->pl, key, "Nickname non esistente");
   } else {
+    LOG_INFO("%s -> %s: %s", pkt->message.hdr.sender, pkt->message.data.hdr.receiver, pkt->message.data.buf);
+
     message_t *msg = calloc(1, sizeof(message_t));
     memcpy(msg, &(pkt->message), sizeof(message_t));
     msg->data.buf = calloc(msg->data.hdr.len, sizeof(char));
@@ -331,6 +329,7 @@ static void route_message_to_client(const char *key, void *value, void *ud) {
       free(oldMsg->data.buf);
       free(oldMsg);
     }
+
     if(client->fd > 0) {
       /* Il client è connesso, gli invio il messaggio */
       message_t newMsg;
@@ -365,12 +364,14 @@ void handle_post_txt(long fd, message_t *msg, payload_t *pl) {
   connected_client_t *client = find_connected_client(fd, pl);
   if(client == NULL) {
     /* Un client non connesso ha tentato di inviare un messaggio */
+    LOG_WARN("Il client %ld non connesso ha tentato di inviare un messaggio", fd);
     send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso");
     return;
   }
 
   if(msg->data.hdr.len > pl->cfg->maxMsgSize) {
     /* Il messaggio è troppo lungo */
+    LOG_WARN("'%s' ha tentato di inviare un messaggio troppo lungo", client->nick);
     send_error_message(fd, OP_MSG_TOOLONG, pl, NULL, "Messaggio testuale troppo lungo");
     return;
   }
@@ -391,12 +392,14 @@ void handle_post_txt_all(long fd, message_t *msg, payload_t *pl) {
   connected_client_t *client = find_connected_client(fd, pl);
   if(client == NULL) {
     /* Un client non connesso ha tentato di inviare un messaggio */
+    LOG_WARN("Il client %ld non connesso ha tentato di inviare un messaggio broadcast", fd);
     send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso");
     return;
   }
 
   if(msg->data.hdr.len > pl->cfg->maxMsgSize) {
     /* Il messaggio è troppo lungo */
+    LOG_WARN("'%s' ha tentato di inviare un messaggio broadcast troppo lungo", client->nick);
     send_error_message(fd, OP_MSG_TOOLONG, pl, NULL, "Messaggio testuale troppo lungo");
     return;
   }
@@ -450,6 +453,7 @@ void handle_post_file(long fd, message_t *msg, payload_t *pl) {
   connected_client_t *client = find_connected_client(fd, pl);
   if(client == NULL) {
     /* Un client non connesso ha tentato di inviare un file */
+    LOG_WARN("Il client %ld non connesso ha tentato di inviare un file", fd);
     send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso");
     return;
   }
@@ -465,6 +469,7 @@ void handle_post_file(long fd, message_t *msg, payload_t *pl) {
 
   if(file_data.hdr.len > pl->cfg->maxFileSize) {
     /* Il file è troppo lungo */
+    LOG_WARN("'%s' ha tentato di inviare un file troppo lungo", client->nick);
     send_error_message(fd, OP_MSG_TOOLONG, pl, NULL, "File troppo lungo");
     return;
   }
@@ -507,6 +512,7 @@ void handle_get_file(long fd, message_t *msg, payload_t *pl) {
   connected_client_t *client = find_connected_client(fd, pl);
   if(client == NULL) {
     /* Un client non connesso ha tentato di inviare un file */
+    LOG_WARN("Il client %ld non connesso ha tentato di ricevere un file", fd);
     send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso");
     return;
   }
@@ -524,6 +530,7 @@ void handle_get_file(long fd, message_t *msg, payload_t *pl) {
   FILE *file = fopen(file_path, "wb");
   free(file_path);
   if(file == NULL) {
+    LOG_WARN("'%s' ha richiesto un file non disponibile", client->nick);
     send_error_message(fd, OP_FAIL, pl, NULL, "Impossibile accedere al file richiesto");
     return;
   }
@@ -542,6 +549,8 @@ void handle_get_file(long fd, message_t *msg, payload_t *pl) {
   fclose(file);
   file = NULL;
 
+  LOG_INFO("'%s' ha richiesto un file", client->nick);
+
   message_t answer;
   memset(&answer, 0, sizeof(message_t));
   answer.data.buf = data;
@@ -559,9 +568,12 @@ static void handle_get_prev_msgs_cb(const char *key, void *value, void *ud) {
   if(value == NULL) {
     /* È stata richiesta la cronologia di un nickname non registrato */
     INCREASE_ERRORS(data->pl);
-    
+    LOG_WARN("E' stata richiesta la cronologia dell'utente '%s' non esistente", key);
+
     send_error_message(data->fd, OP_NICK_UNKNOWN, data->pl, key, "Nickname non esistente");
   } else {
+    LOG_INFO("'%s' ha richiesto la cronologia", key);
+
     client_descriptor_t *cd = (client_descriptor_t *)value;
 
     void **elems;
@@ -603,6 +615,7 @@ void handle_get_prev_msgs(long fd, message_t *msg, payload_t *pl) {
   connected_client_t *client = find_connected_client(fd, pl);
   if(client == NULL) {
     /* Un client non connesso ha tentato di richiedere la cronologia */
+    LOG_WARN("Il client %ld non connesso ha richiesto la cronologia di un utente", fd);
     send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso");
     return;
   }
@@ -618,6 +631,7 @@ void handle_get_prev_msgs(long fd, message_t *msg, payload_t *pl) {
 void handle_usr_list(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == USRLIST_OP);
 
+  LOG_INFO("Il client '%ld' ha richiesto la lista degli utenti connessi", fd);
   send_user_list(fd, pl);
 }
 
@@ -630,9 +644,10 @@ void handle_unregister(long fd, message_t *msg, payload_t *pl) {
   if(deletedUser == NULL) {
     /* Tentativo di deregistrazione di un nickname non registrato */
     INCREASE_ERRORS(pl);
-    
+    LOG_WARN("Tentativo di deregistrazione di '%s' non esistente", msg->data.hdr.receiver);
     send_error_message(fd, OP_NICK_UNKNOWN, pl, msg->hdr.sender, "Nickname non esistente");
   } else {
+    LOG_INFO("Deregistrazione di '%s'", msg->data.hdr.receiver);
     free_client_descriptor(deletedUser);
     message_t ack;
     memset(&ack, 0, sizeof(message_t));

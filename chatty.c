@@ -343,6 +343,8 @@ int main(int argc, char *argv[]) {
           HANDLE_FATAL(pthread_mutex_lock(&(payload.stats_mtx)), "pthread_mutex_lock");
           if(payload.chatty_stats.nonline >= cfg.maxConnections) {
             /* Numero massimo di connessioni raggiunto, rifiuta la connessione */
+            LOG_ERR("Connessione di %d rifiutata", newClient);
+
             message_t errMsg;
             make_error_message(&errMsg, OP_FAIL, NULL, "Server occupato");
             sendRequest(newClient, &errMsg);
