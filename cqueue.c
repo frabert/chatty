@@ -30,8 +30,17 @@ struct cqueue {
 
 void freeList(node_t *n, cqueue_deinitializer cb) {
   if(n == NULL) { return; }
-  if(n->next != NULL) { freeList(n->next, cb); n->next = NULL; }
-  if(cb != NULL) { cb(n->v); n->v = NULL; }
+
+  if(n->next != NULL) {
+    freeList(n->next, cb);
+    n->next = NULL;
+  }
+
+  if(cb != NULL) {
+    cb(n->v);
+    n->v = NULL;
+  }
+
   free(n);
 }
 
@@ -142,7 +151,9 @@ int cqueue_pop(cqueue_t *cq, void **elem) {
   } else {
     /* Caso standard - la coda
       ha più di un elemento */
-    cq->head = cq->head->next;
+    node_t *next = cq->head->next;
+    free(cq->head);
+    cq->head = next;
     cq->size--;
   }
 
@@ -160,7 +171,15 @@ int cqueue_size(cqueue_t *cq) {
     return -1;
   }
 
-  return cq->size;
+  int ret = pthread_mutex_lock(&(cq->mtx));
+  CHECK_RET
+
+  int size = cq->size;
+
+  ret = pthread_mutex_unlock(&(cq->mtx));
+  CHECK_RET
+
+  return size;
 }
 
 int cqueue_clear(cqueue_t *cq, cqueue_deinitializer cb) {
@@ -175,6 +194,7 @@ int cqueue_clear(cqueue_t *cq, cqueue_deinitializer cb) {
   freeList(cq->head, cb);
   cq->head = NULL;
   cq->tail = NULL;
+  cq->size = 0;
 
   ret = pthread_mutex_unlock(&(cq->mtx));
   CHECK_RET
