@@ -55,12 +55,22 @@ void free_client_descriptor(void *ptr) {
   HANDLE_FATAL(numMsg, "ccircbuf_get_elems");
 
   for(int i = 0; i < numMsg; i++) {
+    message_t *msg = messages[i];
+    free(msg->data.buf);
     free(messages[i]);
   }
   free(messages);
   HANDLE_FATAL(ccircbuf_deinit(cd->message_buffer), "ccircbuf_deinit");
 
   free(cd);
+}
+
+void free_group(void *ptr) {
+  if(ptr == NULL) return;
+
+  cstrlist_t *list = (cstrlist_t*)ptr;
+  int ret = cstrlist_deinit(list);
+  HANDLE_FATAL(ret, "cstrlist_deinit");
 }
 
 /**
@@ -215,10 +225,16 @@ void *worker_thread(void *data) {
       disconnect_client(fd, pl);
     } else {
       if(msg.hdr.op >= OP_CLIENT_END) {
+        LOG_WARN("Ricevuto messaggio non valido dal client %ld", fd);
         send_error_message(fd, OP_FAIL, pl, NULL, "Messaggio non valido");
       } else {
-        /* Esegue il gestore di richieste in base all'operazione */
-        chatty_handlers[msg.hdr.op](fd, &msg, pl);
+        if(msg.hdr.sender[0] != '\0') {
+          /* Esegue il gestore di richieste in base all'operazione */
+          chatty_handlers[msg.hdr.op](fd, &msg, pl);
+        } else {
+          /* Messaggio spurio, ignorato */
+          LOG_INFO("Messaggio spurio da %ld ignorato", fd);
+        }
       }
       
       FD_SET(fd, &(pl->set));
@@ -259,6 +275,9 @@ int main(int argc, char *argv[]) {
   memset(&payload, 0, sizeof(payload_t));
   payload.registered_clients = chash_init();
   HANDLE_NULL(payload.registered_clients, "chash_init");
+
+  payload.groups = chash_init();
+  HANDLE_NULL(payload.groups, "chash_init");
 
   payload.ready_sockets = cqueue_init();
   HANDLE_NULL(payload.ready_sockets, "cqueue_init");
@@ -392,7 +411,9 @@ int main(int argc, char *argv[]) {
   /* Elimina il file socket */
   unlink(cfg.socketPath);
 
+  /* Pulizia finale delle risorse allocate */
   HANDLE_FATAL(chash_deinit(payload.registered_clients, free_client_descriptor), "chash_deinit");
+  HANDLE_FATAL(chash_deinit(payload.groups, free_group), "chash_deinit");
   HANDLE_FATAL(cqueue_deinit(payload.ready_sockets, free), "cqueue_deinit");
   HANDLE_FATAL(pthread_mutex_destroy(&(payload.stats_mtx)), "pthread_mutex_destroy");
 

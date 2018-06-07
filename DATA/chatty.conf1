@@ -31,7 +31,7 @@ MaxFileSize      = 1024
 MaxHistMsgs      = 16
 
 # directory dove memorizzare i files da inviare agli utenti 
-DirName          = /mnt/c/sol18/doc
+DirName          = /tmp/chatty
 
 # file nel quale verranno scritte le statistiche del server
 StatFileName     = /tmp/chatty_stats.txt

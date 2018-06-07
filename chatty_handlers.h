@@ -14,6 +14,7 @@
 #include "chash.h"
 #include "cqueue.h"
 #include "ccircbuf.h"
+#include "cstrlist.h"
 
 #include "stats.h"
 #include "message.h"
@@ -57,6 +58,7 @@ typedef struct {
 
   cqueue_t *ready_sockets; ///< Coda dei socket pronti (tipo: int)
   chash_t *registered_clients; ///< Tabella degli utenti registrati (tipo: \ref client_descriptor_t*)
+  chash_t *groups; ///< Tabella dei gruppi registrati (tipo: \ref cstrlist*)
   connected_client_t *connected_clients; ///< Vettore di client connessi
   pthread_mutex_t connected_clients_mtx; ///< Mutex per l'accesso a \ref connected_clients
   struct server_cfg *cfg; ///< Parametri di configurazione del server
@@ -73,6 +75,7 @@ typedef struct {
   message_t message; ///< Il messaggio da inviare
   long fd; ///< Il descrittore del mittente
   int broadcast; ///< 1 se il messaggio è diretto a più utenti, 0 altrimenti
+  int sent; ///< 1 se il messaggio è stato inviato ad un gruppo, 0 altrimenti
 } message_packet_t;
 
 /**

@@ -38,7 +38,7 @@
 #if CHATTY_VERBOSE
 #  define  LOG_ERR(format, ...) fprintf(stderr, "%s:%d - \033[0;31m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)
 #  define LOG_INFO(format, ...) fprintf(stdout, "%s:%d - \033[0;32m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)
-#  define LOG_WARN(format, ...) fprintf(stdout, "%s:%d - \033[1;33m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)
+#  define LOG_WARN(format, ...) fprintf(stdout, "%s:%d - \033[0;33m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)
 #else
 #  define LOG_ERR (format, ...)
 #  define LOG_INFO(format, ...)

@@ -15,11 +15,17 @@
                     return -1; \
                   }
 
+/**
+ * \brief Nodo di una coda rappresentata come lista linkata
+ */
 typedef struct node {
   void *v; ///< Valore del nodo
   struct node *next; ///< Nodo successivo
 } node_t;
 
+/**
+ * \brief Una coda concorrente
+ */
 struct cqueue {
   node_t *head; ///< Primo elemento della coda
   node_t *tail; ///< Ultimo elemento della coda
@@ -28,7 +34,7 @@ struct cqueue {
   pthread_cond_t cnd_avail; ///< Variabile di condizione per l'attesa di elementi
 };
 
-void freeList(node_t *n, cqueue_deinitializer cb) {
+static void freeList(node_t *n, cqueue_deinitializer cb) {
   if(n == NULL) { return; }
 
   if(n->next != NULL) {

@@ -14,13 +14,16 @@
 #include "chash.h"
 
 /// La dimensione di una hashtable
-#define NUM_HASH_ENTRIES UINT16_MAX
+#define NUM_HASH_ENTRIES 1024
 
 #define CHECK_RET if(ret != 0) { \
                     errno = ret; \
                     return -1; \
                   }
 
+/**
+ * \brief Una lista di trabocco di una tabella hash
+ */
 typedef struct chash_entry {
   char *key; ///< Chiave del nodo
   void *value; ///< Valore del nodo
@@ -28,6 +31,9 @@ typedef struct chash_entry {
   pthread_mutex_t mtx; ///< Mutex per l'accesso al nodo
 } chash_entry_t;
 
+/**
+ * \brief Tabella hash concorrente
+ */
 struct chash {
   chash_entry_t *entries[NUM_HASH_ENTRIES]; ///< Tabella dei nodi
   int numkeys; ///< Numero di nodi attualmente contenuti

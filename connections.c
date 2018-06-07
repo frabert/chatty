@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include "connections.h"
+#include "errman.h"
 
 /**
  * \brief Legge esattamente len byte dal descrittore fd
@@ -122,14 +123,7 @@ static int sendDataHeader(long fd, message_data_hdr_t *datahdr) {
   return writen(fd, (void*)datahdr, sizeof(message_data_hdr_t));
 }
 
-/**
- * \brief Invia un header di messaggio ad un descrittore
- * 
- * \param fd Il descrittore a cui inviare l'header
- * \param hdr L'header da inviare
- * \return int Vedi writen
- */
-static int sendHeader(long fd, message_hdr_t *hdr) {
+int sendHeader(long fd, message_hdr_t *hdr) {
   return writen(fd, (void*)hdr, sizeof(message_hdr_t));
 }
 

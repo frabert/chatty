@@ -106,6 +106,17 @@ int sendRequest(long fd, message_t *msg);
  */
 int sendData(long fd, message_data_t *msg);
 
+/**
+ * \brief Invia un header di messaggio ad un descrittore
+ * 
+ * \param fd Il descrittore a cui inviare l'header
+ * \param hdr L'header da inviare
+ * \return <0 se si è verificato un errore,
+ *         =0 se il socket si è chiuso,
+ *         >0 se l'operazione ha avuto successo
+ */
+int sendHeader(long fd, message_hdr_t *hdr);
+
 
 /* da completare da parte dello studente con eventuali altri metodi di interfaccia */
 

@@ -17,6 +17,9 @@
                     return -1; \
                   }
 
+/**
+ * \brief Buffer circolare concorrente 
+ */
 struct ccircbuf {
   size_t len; ///< Capienza del buffer
   size_t ptr; ///< Testa del buffer
