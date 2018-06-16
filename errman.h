@@ -9,18 +9,20 @@
 #ifndef ERRMAN_H_
 #define ERRMAN_H_
 
-#define CHATTY_VERBOSE 1
+#define CHATTY_VERBOSE 0
 
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
+
+#define HAS_DISCONNECTED(x) ((x) < 0 && (errno == EPIPE || errno == ECONNABORTED || errno == ECONNRESET || errno == ECONNREFUSED || errno == EBADF))
 
 /**
  * \brief Se x vale < 0, il programma termina con un messaggio d'errore
  * 
  * Il messaggio d'errore conterrà anche un riferimento a dove è stato generato
  */
-#define HANDLE_FATAL(x, s) if((x) < 0 && errno != EPIPE && errno != ECONNABORTED && errno != ECONNREFUSED && errno != ECONNRESET) { \
+#define HANDLE_FATAL(x, s) if((x) < 0) { \
                             fprintf(stderr, "%s:%d ", __FILE__, __LINE__); \
                             perror(s); \
                             exit(EXIT_FAILURE); }
@@ -30,7 +32,7 @@
  * 
  * Il messaggio d'errore conterrà anche un riferimento a dove è stato generato
  */
-#define HANDLE_NULL(x, s) if ((x) == NULL && errno != EPIPE) { \
+#define HANDLE_NULL(x, s) if ((x) == NULL) { \
                           fprintf(stderr, "%s: %d ", __FILE__, __LINE__); \
                           perror(s); \
                           exit(EXIT_FAILURE); }
@@ -40,7 +42,7 @@
 #  define LOG_INFO(format, ...) fprintf(stdout, "%s:%d - \033[0;32m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)
 #  define LOG_WARN(format, ...) fprintf(stdout, "%s:%d - \033[0;33m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)
 #else
-#  define LOG_ERR (format, ...)
+#  define  LOG_ERR(format, ...)
 #  define LOG_INFO(format, ...)
 #  define LOG_WARN(format, ...)
 #endif

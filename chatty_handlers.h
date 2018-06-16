@@ -82,9 +82,10 @@ typedef struct {
  * \brief Gestisce la disconnessione di un client
  * 
  * \param fd Il socket che si è disconnesso
+ * \param client Il descrittore del client da disconnetere, se disponibile
  * \param pl Informazioni di contesto
  */
-void disconnect_client(long fd, payload_t *pl);
+void disconnect_client(long fd, payload_t *pl, client_descriptor_t *client);
 
 /**
  * \brief Dealloca una struttura \ref client_descriptor_t
@@ -120,8 +121,9 @@ void make_error_message(message_t *msg, op_t error, const char *receiver, const 
  * \param error Il codice d'errore da inviare
  * \param pl Dati di contesto
  * \param receiver Nome del destinatario (opzionale)
+ * \param client Il descrittore del client da disconnetere in caso di errori, se disponibile
  * \param text Testo d'errore (opzionale)
  */
-void send_error_message(long fd, op_t error, payload_t *pl, const char *receiver, const char *text);
+void send_error_message(long fd, op_t error, payload_t *pl, const char *receiver, const char *text, client_descriptor_t *client);
 
 #endif

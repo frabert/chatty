@@ -97,7 +97,9 @@ int chash_get(chash_t *ht, const char *key, chash_get_callback cb, void *ud) {
     } else {
       ret = pthread_mutex_lock(&(ptr->mtx));
       CHECK_RET
+
       cb(key, ptr->value, ud);
+      
       ret = pthread_mutex_unlock(&(ptr->mtx));
       CHECK_RET
     }
@@ -115,14 +117,21 @@ int chash_get_all(chash_t *ht, chash_get_callback cb, void *ud) {
     return -1;
   }
 
-  int ret = pthread_rwlock_wrlock(&(ht->lock));
+  int ret = pthread_rwlock_rdlock(&(ht->lock));
   CHECK_RET
 
   for(size_t i = 0; i < NUM_HASH_ENTRIES; i++) {
     if(ht->entries[i] != NULL) {
       chash_entry_t *ptr = ht->entries[i];
       while(ptr != NULL) {
+        ret = pthread_mutex_lock(&(ptr->mtx));
+        CHECK_RET
+
         cb(ptr->key, ptr->value, ud);
+        
+        ret = pthread_mutex_unlock(&(ptr->mtx));
+        CHECK_RET
+        
         ptr = ptr->next;
       }
     }

@@ -26,7 +26,8 @@ typedef void(cqueue_deinitializer)(void *elem);
 /**
  * \brief Inizializza la coda concorrente
  * 
- * \return cqueue_t* NULL se l'inizializzazione non ha avuto successo. Se si sono verificati errori viene impostato errno.
+ * \return cqueue_t* NULL se l'inizializzazione non ha avuto successo.
+ *                   Se si sono verificati errori viene impostato errno.
  */
 cqueue_t *cqueue_init();
 
@@ -35,7 +36,8 @@ cqueue_t *cqueue_init();
  * 
  * \param queue La coda da deallocare
  * \param cb La funzione da chiamare per ogni elemento ancora presente sulla coda. Può essere NULL.
- * \return int 0 se la funzione ha avuto successo, -1 altrimenti. Viene impostato errno se si sono verificati errori.
+ * \return int 0 se la funzione ha avuto successo, -1 altrimenti.
+ *             Viene impostato errno se si sono verificati errori.
  */
 int cqueue_deinit(cqueue_t *queue, cqueue_deinitializer cb);
 
@@ -44,7 +46,8 @@ int cqueue_deinit(cqueue_t *queue, cqueue_deinitializer cb);
  * 
  * \param cq La coda in cui inserire l'elemento
  * \param v L'elemento da inserire nella coda
- * \return int 0 se la funzione ha avuto successo, -1 altrimenti. Viene impostato errno se si sono verificati errori.
+ * \return int 0 se la funzione ha avuto successo, -1 altrimenti.
+ *             Viene impostato errno se si sono verificati errori.
  */
 int cqueue_push(cqueue_t *cq, void *v);
 
@@ -54,7 +57,8 @@ int cqueue_push(cqueue_t *cq, void *v);
  * 
  * \param cq La coda da cui estrarre
  * \param elem L'elemento estratto
- * \return int 0 se la funzione ha avuto successo, -1 altrimenti. Viene impostato errno se si sono verificati errori.
+ * \return int 0 se la funzione ha avuto successo, -1 altrimenti.
+ *             Viene impostato errno se si sono verificati errori.
  */
 int cqueue_pop(cqueue_t *cq, void **elem);
 
@@ -63,7 +67,8 @@ int cqueue_pop(cqueue_t *cq, void **elem);
  * 
  * \param cq La coda di cui ottenere la lunghezza
  * 
- * \return int >=0 se la chiamata ha avuto successo, -1 altrimenti. Viene impostato errno se si sono verificati errori.
+ * \return int >=0 se la chiamata ha avuto successo, -1 altrimenti.
+ *             Viene impostato errno se si sono verificati errori.
  */
 int cqueue_size(cqueue_t *cq);
 

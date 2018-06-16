@@ -218,15 +218,19 @@ void *worker_thread(void *data) {
     memset(&msg, 0, sizeof(message_t));
 
     int res = readMsg(fd, &msg);
-    HANDLE_FATAL(res, "readMsg");
+    if(HAS_DISCONNECTED(res)) {
+      LOG_ERR("%s", strerror(errno));
+      disconnect_client(fd, pl, NULL);
+      continue;
+    } else HANDLE_FATAL(res, "readMsg");
 
     if(res == 0) {
       /* Il client si è disconnesso */
-      disconnect_client(fd, pl);
+      disconnect_client(fd, pl, NULL);
     } else {
       if(msg.hdr.op >= OP_CLIENT_END) {
         LOG_WARN("Ricevuto messaggio non valido dal client %ld", fd);
-        send_error_message(fd, OP_FAIL, pl, NULL, "Messaggio non valido");
+        send_error_message(fd, OP_FAIL, pl, NULL, "Messaggio non valido", NULL);
       } else {
         if(msg.hdr.sender[0] != '\0') {
           /* Esegue il gestore di richieste in base all'operazione */
@@ -372,10 +376,8 @@ int main(int argc, char *argv[]) {
 
             payload.chatty_stats.nerrors++;
           } else {
-            payload.chatty_stats.nonline++;
             FD_SET(newClient, &(payload.set));
           }
-
           HANDLE_FATAL(pthread_mutex_unlock(&(payload.stats_mtx)), "pthread_mutex_unlock");
         } else {
           /* Un client già connesso è pronto */
