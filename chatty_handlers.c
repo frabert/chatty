@@ -16,9 +16,6 @@
 #include "connections.h"
 #include "chatty_handlers.h"
 
-#define LOCK(mtx) HANDLE_FATAL(pthread_mutex_lock(&(mtx)), "pthread_mutex_lock")
-#define UNLOCK(mtx) HANDLE_FATAL(pthread_mutex_unlock(&(mtx)), "pthread_mutex_unlock")
-
 /// Aumenta in maniera atomica il numero di errori inviati
 #define INCREASE_ERRORS(pl) LOCK((pl)->stats_mtx); \
                             (pl)->chatty_stats.nerrors++; \

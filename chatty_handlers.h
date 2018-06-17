@@ -19,6 +19,9 @@
 #include "stats.h"
 #include "message.h"
 
+#define LOCK(mtx) HANDLE_FATAL(pthread_mutex_lock(&(mtx)), "pthread_mutex_lock")
+#define UNLOCK(mtx) HANDLE_FATAL(pthread_mutex_unlock(&(mtx)), "pthread_mutex_unlock")
+
 /**
  * \struct server_cfg
  * \brief Dati letti dai file di configurazione

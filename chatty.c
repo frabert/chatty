@@ -330,9 +330,9 @@ int main(int argc, char *argv[]) {
       FILE *statFile = fopen(cfg.statFileName, "a");
       HANDLE_NULL(statFile, "fopen");
 
-      HANDLE_FATAL(pthread_mutex_lock(&(payload.stats_mtx)), "pthread_mutex_lock");
+      LOCK(payload.stats_mtx);
       HANDLE_FATAL(printStats(statFile, &(payload.chatty_stats)), "printStats");
-      HANDLE_FATAL(pthread_mutex_unlock(&(payload.stats_mtx)), "pthread_mutex_unlock");
+      UNLOCK(payload.stats_mtx);
 
       fclose(statFile);
 
@@ -363,7 +363,7 @@ int main(int argc, char *argv[]) {
           newClient = accept(fd_sk, NULL, 0);
           HANDLE_FATAL(newClient, "accept");
 
-          HANDLE_FATAL(pthread_mutex_lock(&(payload.stats_mtx)), "pthread_mutex_lock");
+          LOCK(payload.stats_mtx);
           if(payload.chatty_stats.nonline >= cfg.maxConnections) {
             /* Numero massimo di connessioni raggiunto, rifiuta la connessione */
             LOG_ERR("Connessione di %d rifiutata", newClient);
@@ -378,7 +378,7 @@ int main(int argc, char *argv[]) {
           } else {
             FD_SET(newClient, &(payload.set));
           }
-          HANDLE_FATAL(pthread_mutex_unlock(&(payload.stats_mtx)), "pthread_mutex_unlock");
+          UNLOCK(payload.stats_mtx);
         } else {
           /* Un client già connesso è pronto */
           long *elem = calloc(1, sizeof(long));
