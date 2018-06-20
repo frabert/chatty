@@ -142,18 +142,16 @@ void disconnect_client(long fd, payload_t *pl, client_descriptor_t *client) {
         client->fd = -1;
       }
 
-      printf("disc %s\n", pl->connected_clients[clientIdx].nick);
       pl->connected_clients[clientIdx].nick[0] = '\0';
       pl->connected_clients[clientIdx].fd = -1;
+
+      LOCK(pl->stats_mtx);
+        pl->chatty_stats.nonline--;
+      UNLOCK(pl->stats_mtx);
+
+      FD_CLR(fd, &(pl->set));
     }
   UNLOCK(pl->connected_clients_mtx);
-
-  LOCK(pl->stats_mtx);
-    pl->chatty_stats.nonline--;
-  UNLOCK(pl->stats_mtx);
-
-  FD_CLR(fd, &(pl->set));
-  close(fd);
 }
 
 /**
@@ -229,7 +227,6 @@ static void handle_connect_cb(const char *key, void *value, void *ud) {
 
         send_user_list(fd, data->pl, cd);
 
-        printf("conn %s %d\n", key, fd);
         LOCK(data->pl->connected_clients_mtx);
           data->pl->chatty_stats.nonline++;
         UNLOCK(data->pl->connected_clients_mtx);
@@ -790,6 +787,8 @@ void handle_unregister(long fd, message_t *msg, payload_t *pl) {
   } else {
     LOG_INFO("Deregistrazione di '%s'", msg->data.hdr.receiver);
 
+    disconnect_client(fd, pl, deletedUser);
+    close(fd);
     free_client_descriptor(deletedUser);
 
     /* Elimina l'utente deregistrato da tutti i gruppi */
@@ -804,11 +803,6 @@ void handle_unregister(long fd, message_t *msg, payload_t *pl) {
     res = send_handle_disconnect(fd, &ack, pl, 0);
     HANDLE_FATAL(res, "send_handle_disconnect");
 
-    if(deletedUser->fd > 0) {
-      FD_CLR(deletedUser->fd, &(pl->set));
-      close(deletedUser->fd);
-    }
-
     LOCK(pl->stats_mtx);
       pl->chatty_stats.nusers--;
     UNLOCK(pl->stats_mtx);
@@ -819,6 +813,7 @@ void handle_disconnect(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == DISCONNECT_OP);
 
   disconnect_client(fd, pl, NULL);
+  close(fd);
 }
 
 void handle_create_group(long fd, message_t *msg, payload_t *pl) {
