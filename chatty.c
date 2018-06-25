@@ -240,8 +240,6 @@ void *worker_thread(void *data) {
           LOG_INFO("Messaggio spurio da %ld ignorato", fd);
         }
       }
-      
-      FD_SET(fd, &(pl->set));
     }
     free(msg.data.buf);
   }
@@ -330,9 +328,9 @@ int main(int argc, char *argv[]) {
       FILE *statFile = fopen(cfg.statFileName, "a");
       HANDLE_NULL(statFile, "fopen");
 
-      LOCK(payload.stats_mtx);
-      HANDLE_FATAL(printStats(statFile, &(payload.chatty_stats)), "printStats");
-      UNLOCK(payload.stats_mtx);
+      MUTEX_GUARD(payload.stats_mtx, {
+        HANDLE_FATAL(printStats(statFile, &(payload.chatty_stats)), "printStats");
+      });
 
       fclose(statFile);
 
@@ -363,22 +361,22 @@ int main(int argc, char *argv[]) {
           newClient = accept(fd_sk, NULL, 0);
           HANDLE_FATAL(newClient, "accept");
 
-          LOCK(payload.stats_mtx);
-          if(payload.chatty_stats.nonline >= cfg.maxConnections) {
-            /* Numero massimo di connessioni raggiunto, rifiuta la connessione */
-            LOG_ERR("Connessione di %d rifiutata", newClient);
-
-            message_t errMsg;
-            make_error_message(&errMsg, OP_FAIL, NULL, "Server occupato");
-            sendRequest(newClient, &errMsg);
-            
-            free(errMsg.data.buf);
-
-            payload.chatty_stats.nerrors++;
-          } else {
-            FD_SET(newClient, &(payload.set));
-          }
-          UNLOCK(payload.stats_mtx);
+          MUTEX_GUARD(payload.stats_mtx, {
+            if(payload.chatty_stats.nonline >= cfg.maxConnections) {
+              /* Numero massimo di connessioni raggiunto, rifiuta la connessione */
+              LOG_ERR("Connessione di %d rifiutata", newClient);
+  
+              message_t errMsg;
+              make_error_message(&errMsg, OP_FAIL, NULL, "Server occupato");
+              sendRequest(newClient, &errMsg);
+              
+              free(errMsg.data.buf);
+  
+              payload.chatty_stats.nerrors++;
+            } else {
+              FD_SET(newClient, &(payload.set));
+            }
+          });
         } else {
           /* Un client già connesso è pronto */
           long *elem = calloc(1, sizeof(long));

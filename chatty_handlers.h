@@ -22,6 +22,10 @@
 #define LOCK(mtx) HANDLE_FATAL(pthread_mutex_lock(&(mtx)), "pthread_mutex_lock")
 #define UNLOCK(mtx) HANDLE_FATAL(pthread_mutex_unlock(&(mtx)), "pthread_mutex_unlock")
 
+#define MUTEX_GUARD(mtx, block) { LOCK(mtx); \
+                                  { block; } \
+                                  UNLOCK(mtx); }
+
 /**
  * \struct server_cfg
  * \brief Dati letti dai file di configurazione
@@ -127,6 +131,6 @@ void make_error_message(message_t *msg, op_t error, const char *receiver, const 
  * \param client Il descrittore del client da disconnetere in caso di errori, se disponibile
  * \param text Testo d'errore (opzionale)
  */
-void send_error_message(long fd, op_t error, payload_t *pl, const char *receiver, const char *text, client_descriptor_t *client);
+int send_error_message(long fd, op_t error, payload_t *pl, const char *receiver, const char *text, client_descriptor_t *client);
 
 #endif

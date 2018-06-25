@@ -9,13 +9,21 @@
 #ifndef ERRMAN_H_
 #define ERRMAN_H_
 
-#define CHATTY_VERBOSE 0
+#define CHATTY_VERBOSE 1
 
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
 
-#define HAS_DISCONNECTED(x) ((x) < 0 && (errno == EPIPE || errno == ECONNABORTED || errno == ECONNRESET || errno == ECONNREFUSED || errno == EBADF))
+/**
+ * \brief Restituisce true se x è un errore relativo alla disconnessione
+ * di un client
+ */
+#define HAS_DISCONNECTED(x) ((x) < 0 && (errno == EPIPE \
+                                      || errno == ECONNABORTED \
+                                      || errno == ECONNRESET \
+                                      || errno == ECONNREFUSED \
+                                      || errno == EBADF))
 
 /**
  * \brief Se x vale < 0, il programma termina con un messaggio d'errore
