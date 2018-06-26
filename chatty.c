@@ -230,7 +230,9 @@ void *worker_thread(void *data) {
     } else {
       if(msg.hdr.op >= OP_CLIENT_END) {
         LOG_WARN("Ricevuto messaggio non valido dal client %ld", fd);
-        send_error_message(fd, OP_FAIL, pl, NULL, "Messaggio non valido", NULL);
+        MUTEX_GUARD(pl->connected_clients_mtx, {
+          send_error_message(fd, OP_FAIL, pl, NULL, "Messaggio non valido", NULL);
+        });
       } else {
         if(msg.hdr.sender[0] != '\0') {
           /* Esegue il gestore di richieste in base all'operazione */

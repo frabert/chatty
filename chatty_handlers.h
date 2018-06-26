@@ -19,12 +19,22 @@
 #include "stats.h"
 #include "message.h"
 
-#define LOCK(mtx) HANDLE_FATAL(pthread_mutex_lock(&(mtx)), "pthread_mutex_lock")
-#define UNLOCK(mtx) HANDLE_FATAL(pthread_mutex_unlock(&(mtx)), "pthread_mutex_unlock")
+/**
+ * \brief Blocca \ref mtx
+ */
+#define LOCK(mtx) HANDLE_FATAL(pthread_mutex_lock(&(mtx)), "Bloccando " #mtx)
 
-#define MUTEX_GUARD(mtx, block) { LOCK(mtx); \
+/**
+ * \brief Sblocca \ref mtx
+ */
+#define UNLOCK(mtx) HANDLE_FATAL(pthread_mutex_unlock(&(mtx)), "Sbloccando " #mtx)
+
+/**
+ * \brief Esegue \ref block mantenendo un blocco su \ref mtx
+ */
+#define MUTEX_GUARD(mtx, block) { LOCK((mtx)); \
                                   { block; } \
-                                  UNLOCK(mtx); }
+                                  UNLOCK((mtx)); }
 
 /**
  * \struct server_cfg
@@ -88,6 +98,8 @@ typedef struct {
 /**
  * \brief Gestisce la disconnessione di un client
  * 
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
+ * 
  * \param fd Il socket che si è disconnesso
  * \param client Il descrittore del client da disconnetere, se disponibile
  * \param pl Informazioni di contesto
@@ -123,6 +135,8 @@ void make_error_message(message_t *msg, op_t error, const char *receiver, const 
 
 /**
  * \brief Invia un messaggio d'errore ad un client e gestisce automaticamente l'eventuale disconnessione
+ * 
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
  * 
  * \param fd Il descrittore a cui inviare l'errore
  * \param error Il codice d'errore da inviare

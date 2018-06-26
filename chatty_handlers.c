@@ -38,8 +38,6 @@ void make_error_message(message_t *msg, op_t error, const char *receiver, const 
     msg->data.buf = calloc(len + 1, sizeof(char));
     strncpy(msg->data.buf, text, len);
   }
-
-  return;
 }
 
 /**
@@ -56,7 +54,7 @@ static int send_handle_disconnect(long fd, message_t *msg, payload_t *pl, client
     LOG_ERR("%s", strerror(errno));
     disconnect_client(fd, pl, client);
     ret = 0;
-    //FD_CLR(fd, &(pl->set));
+    FD_CLR(fd, &(pl->set));
   } else {
     FD_SET(fd, &(pl->set));
   }
@@ -66,6 +64,8 @@ static int send_handle_disconnect(long fd, message_t *msg, payload_t *pl, client
 
 /**
  * \brief Invia un header ad un client e gestisce automaticamente l'evenutale disconnessione
+ * 
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
  * 
  * \param fd Descrittore a cui inviare l'header
  * \param msg L'header da inviare
@@ -77,7 +77,7 @@ static int send_header_handle_disconnect(long fd, message_hdr_t *msg, payload_t 
   if(ret == 0 || HAS_DISCONNECTED(ret)) {
     disconnect_client(fd, pl, client);
     ret = 0;
-    //FD_CLR(fd, &(pl->set));
+    FD_CLR(fd, &(pl->set));
   } else {
     FD_SET(fd, &(pl->set));
   }
@@ -122,6 +122,8 @@ static void disconnect_client_cb(const char *key, void *value, void *ud) {
 /**
  * \brief Restituisce il client associato al descrittore \ref fd
  * 
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
+ * 
  * \param fd Il descrittore da cercare
  * \param pl Dati di contesto
  * \return connected_client_t* Il client trovato. NULL se \ref fd non si riferisce ad alcun client connesso
@@ -137,29 +139,33 @@ static int find_connected_client(long fd, payload_t *pl) {
 }
 
 void disconnect_client(long fd, payload_t *pl, client_descriptor_t *client) {
-  MUTEX_GUARD(pl->connected_clients_mtx, {
-    int clientIdx = find_connected_client(fd, pl);
-    if(clientIdx != -1) {
-      LOG_INFO("Disconnessione di '%s'", pl->connected_clients[clientIdx].nick);
+  int clientIdx = find_connected_client(fd, pl);
+  if(clientIdx != -1) {
+    LOG_INFO("Disconnessione di '%s'", pl->connected_clients[clientIdx].nick);
 
-      if(client == NULL) {
-        chash_get(pl->registered_clients, pl->connected_clients[clientIdx].nick, disconnect_client_cb, pl);
-      } else {
-        client->fd = -1;
-      }
-
-      pl->connected_clients[clientIdx].nick[0] = '\0';
-      pl->connected_clients[clientIdx].fd = -1;
-
-      MUTEX_GUARD(pl->stats_mtx, {
-        pl->chatty_stats.nonline--;
-      });
+    if(client == NULL) {
+      int ret = chash_get(pl->registered_clients,
+                          pl->connected_clients[clientIdx].nick,
+                          disconnect_client_cb, pl);
+      HANDLE_FATAL(ret, "chash_get");
+    } else {
+      client->fd = -1;
     }
-  });
+
+    pl->connected_clients[clientIdx].nick[0] = '\0';
+    pl->connected_clients[clientIdx].fd = -1;
+
+    MUTEX_GUARD(pl->stats_mtx, {
+      if(pl->chatty_stats.nonline > 0)
+        pl->chatty_stats.nonline--;
+    });
+  }
 }
 
 /**
  * \brief Invia la lista degli utenti registrati
+ * 
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
  * 
  * \param fd Il client a cui inviare la lista
  * \param pl Dati di contesto
@@ -168,15 +174,13 @@ static int send_user_list(int fd, payload_t *pl, client_descriptor_t *client) {
   char *buf = NULL;
   int c = 0;
 
-  MUTEX_GUARD(pl->connected_clients_mtx, {
-    buf = calloc(sizeof(char) * (MAX_NAME_LENGTH + 1), pl->cfg->maxConnections);
-    for(int i = 0; i < pl->cfg->maxConnections; i++) {
-      if(pl->connected_clients[i].fd > 0 && pl->connected_clients[i].nick[0] != '\0') {
-        strncpy(buf + (MAX_NAME_LENGTH + 1) * c, pl->connected_clients[i].nick, MAX_NAME_LENGTH);
-        c++;
-      }
+  buf = calloc(sizeof(char) * (MAX_NAME_LENGTH + 1), pl->cfg->maxConnections);
+  for(int i = 0; i < pl->cfg->maxConnections; i++) {
+    if(pl->connected_clients[i].fd > 0 && pl->connected_clients[i].nick[0] != '\0') {
+      strncpy(buf + (MAX_NAME_LENGTH + 1) * c, pl->connected_clients[i].nick, MAX_NAME_LENGTH);
+      c++;
     }
-  });
+  }
 
   message_t msg;
   memset(&msg, 0, sizeof(message_t));
@@ -184,7 +188,9 @@ static int send_user_list(int fd, payload_t *pl, client_descriptor_t *client) {
   msg.data.hdr.len = sizeof(char) * (MAX_NAME_LENGTH + 1) * c;
   msg.data.buf = buf;
 
-  int ret = send_handle_disconnect(fd, &msg, pl, client);
+  int ret;
+
+  ret = send_handle_disconnect(fd, &msg, pl, client);
   HANDLE_FATAL(ret, "send_handle_disconnect");
   
   free(buf);
@@ -204,6 +210,8 @@ struct callback_data {
 /**
  * \brief Viene utilizzata da \ref handle_connect per associare un socket a un nome utente
  * 
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
+ * 
  * \param key Il nome utente da associare
  * \param value Descrittore del client da associare (\ref client_descriptor_t*)
  * \param ud Contesto di lavoro (\ref callback_data*)
@@ -219,7 +227,7 @@ static void handle_connect_cb(const char *key, void *value, void *ud) {
 
     INCREASE_ERRORS(data->pl);
 
-    int ret = send_error_message(fd, OP_NICK_UNKNOWN, data->pl, NULL, "Nickname non esistente", NULL);
+    send_error_message(fd, OP_NICK_UNKNOWN, data->pl, NULL, "Nickname non esistente", NULL);
     return;
   } else {
     client_descriptor_t *cd = (client_descriptor_t *)value;
@@ -235,7 +243,7 @@ static void handle_connect_cb(const char *key, void *value, void *ud) {
 
         send_user_list(fd, data->pl, cd);
 
-        MUTEX_GUARD(data->pl->connected_clients_mtx, {
+        MUTEX_GUARD(data->pl->stats_mtx, {
           data->pl->chatty_stats.nonline++;
         });
 
@@ -263,8 +271,10 @@ void handle_connect(long fd, message_t *msg, payload_t *pl) {
   data.pl = pl;
   data.fd = fd;
   
-  int ret = chash_get(pl->registered_clients, msg->hdr.sender, handle_connect_cb, &data);
-  HANDLE_FATAL(ret, "chash_get");
+  MUTEX_GUARD(pl->connected_clients_mtx, {
+    int ret = chash_get(pl->registered_clients, msg->hdr.sender, handle_connect_cb, &data);
+    HANDLE_FATAL(ret, "chash_get");
+  });
 }
 
 /**
@@ -292,8 +302,9 @@ void handle_register(long fd, message_t *msg, payload_t *pl) {
     LOG_WARN("Tentativo di registrazione di '%s' fallito", msg->hdr.sender);
 
     INCREASE_ERRORS(pl);
-
-    int ret = send_error_message(fd, OP_NICK_ALREADY, pl, NULL, "Nickname già registrato", 0);
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      send_error_message(fd, OP_NICK_ALREADY, pl, NULL, "Nickname già registrato", NULL);
+    });
 
     free_client_descriptor(cd);
   } else {
@@ -308,13 +319,17 @@ void handle_register(long fd, message_t *msg, payload_t *pl) {
     data.pl = pl;
     data.fd = fd;
     
-    int ret = chash_get(pl->registered_clients, msg->hdr.sender, handle_connect_cb, &data);
-    HANDLE_FATAL(ret, "chash_get");
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      int ret = chash_get(pl->registered_clients, msg->hdr.sender, handle_connect_cb, &data);
+      HANDLE_FATAL(ret, "chash_get");
+    });
   }
 }
 
 /**
  * \brief Instrada un messaggio verso un client
+ * 
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
  * 
  * \param key Il nome utente del client verso cui instradare il messaggio
  * \param value Puntatore al descrittore del client verso cui instradare
@@ -336,7 +351,7 @@ static void route_message_to_client(const char *key, void *value, void *ud) {
     LOG_WARN("'%s' ha tentato di inviare un messaggio ad un utente inesistente ('%s')",
       pkt->message.hdr.sender, key);
     
-    int ret = send_error_message(pkt->fd, OP_NICK_UNKNOWN, pkt->pl, key, "Nickname non esistente", 1);
+    send_error_message(pkt->fd, OP_NICK_UNKNOWN, pkt->pl, key, "Nickname non esistente", client);
   } else {
     LOG_INFO("%s (%ld) -> %s (%ld): %s",
       pkt->message.hdr.sender,
@@ -417,6 +432,8 @@ static void route_message_to_client(const char *key, void *value, void *ud) {
 /**
  * \brief Instrada un messaggio verso un gruppo
  * 
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
+ * 
  * \param key Il nome del gruppo verso cui instradare il messaggio
  * \param value Puntatore alla lista degli utenti verso cui instradare
  * \param ud Puntatore al pacchetto da instradare
@@ -435,7 +452,6 @@ static void route_message_to_group(const char *key, void *value, void *ud) {
 
   int ret, num = cstrlist_get_values(list, &users);
   HANDLE_FATAL(num, "cstrlist_get_values");
-
   for(int i = 0; i < num; i++) {
     ret = chash_get(pkt->pl->registered_clients, users[i], route_message_to_client, pkt);
     HANDLE_FATAL(ret, "chash_get");
@@ -453,6 +469,13 @@ static void route_message_to_group(const char *key, void *value, void *ud) {
   HANDLE_FATAL(ret, "send_header_handle_disconnect");
 }
 
+/**
+ * \brief Gestisce l'invio di un messaggio testuale
+ * 
+ * \param fd Il descrittore del client che ha richiesto l'invio
+ * \param msg Il messaggio ricevuto
+ * \param pl Dati di contesto
+ */
 void handle_post_txt(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == POSTTXT_OP);
 
@@ -464,14 +487,18 @@ void handle_post_txt(long fd, message_t *msg, payload_t *pl) {
   if(clientIdx == -1) {
     /* Un client non connesso ha tentato di inviare un messaggio */
     LOG_WARN("Il client %ld non connesso ha tentato di inviare un messaggio", fd);
-    int ret = send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso", 0);
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso", NULL);
+    });
     return;
   }
 
   if(msg->data.hdr.len > pl->cfg->maxMsgSize) {
     /* Il messaggio è troppo lungo */
     LOG_WARN("'%s' ha tentato di inviare un messaggio troppo lungo", pl->connected_clients[clientIdx].nick);
-    int ret = send_error_message(fd, OP_MSG_TOOLONG, pl, NULL, "Messaggio testuale troppo lungo", 0);
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      send_error_message(fd, OP_MSG_TOOLONG, pl, NULL, "Messaggio testuale troppo lungo", NULL);
+    });
     return;
   }
 
@@ -481,15 +508,25 @@ void handle_post_txt(long fd, message_t *msg, payload_t *pl) {
   pkt.message = *msg;
   pkt.fd = fd;
 
-  /* Prima tentiamo di inviare il messaggio ad un gruppo */
-  int ret = chash_get(pl->groups, msg->data.hdr.receiver, route_message_to_group, &pkt);
-  HANDLE_FATAL(ret, "chash_get");
+  MUTEX_GUARD(pl->connected_clients_mtx, {
+    /* Prima tentiamo di inviare il messaggio ad un gruppo */
+    int ret = chash_get(pl->groups, msg->data.hdr.receiver, route_message_to_group, &pkt);
+    HANDLE_FATAL(ret, "chash_get");
 
-  /* Se il gruppo non esiste, tentiamo di inviare il messaggio ad un utente registrato */
-  ret = chash_get(pl->registered_clients, msg->data.hdr.receiver, route_message_to_client, &pkt);
-  HANDLE_FATAL(ret, "chash_get");
+    /* Se il gruppo non esiste, tentiamo di inviare il messaggio ad un utente registrato */
+    ret = chash_get(pl->registered_clients, msg->data.hdr.receiver, route_message_to_client, &pkt);
+    HANDLE_FATAL(ret, "chash_get");
+  });
+  
 }
 
+/**
+ * \brief Gestisce una richiesta di invio messaggio broadcast
+ * 
+ * \param fd Il descrittore del client che ha richiesto l'operazione
+ * \param msg Il messaggio ricevuto
+ * \param pl Dati di contesto
+ */
 void handle_post_txt_all(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == POSTTXTALL_OP);
 
@@ -501,7 +538,9 @@ void handle_post_txt_all(long fd, message_t *msg, payload_t *pl) {
   if(clientIdx == -1) {
     /* Un client non connesso ha tentato di inviare un messaggio */
     LOG_WARN("Il client %ld non connesso ha tentato di inviare un messaggio broadcast", fd);
-    int ret = send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso", 0);
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso", NULL);
+    });
     return;
   }
 
@@ -509,7 +548,9 @@ void handle_post_txt_all(long fd, message_t *msg, payload_t *pl) {
     /* Il messaggio è troppo lungo */
     LOG_WARN("'%s' ha tentato di inviare un messaggio broadcast troppo lungo",
       pl->connected_clients[clientIdx].nick);
-    int ret = send_error_message(fd, OP_MSG_TOOLONG, pl, NULL, "Messaggio testuale troppo lungo", 0);
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      send_error_message(fd, OP_MSG_TOOLONG, pl, NULL, "Messaggio testuale troppo lungo", NULL);
+    });
     return;
   }
 
@@ -520,14 +561,19 @@ void handle_post_txt_all(long fd, message_t *msg, payload_t *pl) {
   pkt.fd = fd;
   pkt.broadcast = 1;
 
-  int ret = chash_get_all(pl->registered_clients, route_message_to_client, &pkt);
-  HANDLE_FATAL(ret, "chash_get_all");
+  MUTEX_GUARD(pl->connected_clients_mtx, {
+    int ret = chash_get_all(pl->registered_clients, route_message_to_client, &pkt);
+    HANDLE_FATAL(ret, "chash_get_all");
+  });
 
   message_hdr_t ack;
   memset(&ack, 0, sizeof(message_hdr_t));
   ack.op = OP_OK;
 
-  int res = send_header_handle_disconnect(fd, &ack, pl, 0);
+  int res;
+  MUTEX_GUARD(pl->connected_clients_mtx, {
+    res = send_header_handle_disconnect(fd, &ack, pl, 0);
+  });
   HANDLE_FATAL(res, "send_header_handle_disconnect");
 }
 
@@ -556,6 +602,13 @@ static const char *strip_file_name(const char * file_path, size_t *len) {
   return ptr;
 }
 
+/**
+ * \brief Gestisce una richiesta di invio file
+ * 
+ * \param fd Il descrittore del client che ha richiesto l'operazione
+ * \param msg Il messaggio ricevuto
+ * \param pl Dati di contesto
+ */
 void handle_post_file(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == POSTFILE_OP);
 
@@ -567,7 +620,9 @@ void handle_post_file(long fd, message_t *msg, payload_t *pl) {
   if(clientIdx == -1) {
     /* Un client non connesso ha tentato di inviare un file */
     LOG_WARN("Il client %ld non connesso ha tentato di inviare un file", fd);
-    int ret = send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso", 0);
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso", NULL);
+    });
     return;
   }
 
@@ -584,7 +639,9 @@ void handle_post_file(long fd, message_t *msg, payload_t *pl) {
     /* Il file è troppo lungo */
     LOG_WARN("'%s' ha tentato di inviare un file troppo lungo",
       pl->connected_clients[clientIdx].nick);
-    int ret = send_error_message(fd, OP_MSG_TOOLONG, pl, NULL, "File troppo lungo", 0);
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      send_error_message(fd, OP_MSG_TOOLONG, pl, NULL, "File troppo lungo", NULL);
+    });
     free(file_data.buf);
     return;
   }
@@ -618,15 +675,24 @@ void handle_post_file(long fd, message_t *msg, payload_t *pl) {
   pkt.message.data.buf = (char*)file_name;
   pkt.message.data.hdr.len = file_name_len + 1;
 
-  /* Prima tentiamo di inviare il messaggio ad un gruppo */
-  ret = chash_get(pl->groups, msg->data.hdr.receiver, route_message_to_group, &pkt);
-  HANDLE_FATAL(ret, "chash_get");
+  MUTEX_GUARD(pl->connected_clients_mtx, {
+    /* Prima tentiamo di inviare il messaggio ad un gruppo */
+    ret = chash_get(pl->groups, msg->data.hdr.receiver, route_message_to_group, &pkt);
+    HANDLE_FATAL(ret, "chash_get");
 
-  /* Se non esiste il gruppo, tentiamo l'invio ad un utente */
-  ret = chash_get(pl->registered_clients, msg->data.hdr.receiver, route_message_to_client, &pkt);
-  HANDLE_FATAL(ret, "chash_get");
+    /* Se non esiste il gruppo, tentiamo l'invio ad un utente */
+    ret = chash_get(pl->registered_clients, msg->data.hdr.receiver, route_message_to_client, &pkt);
+    HANDLE_FATAL(ret, "chash_get");
+  });
 }
 
+/**
+ * \brief Gestisce una richiesta di ricezione file
+ * 
+ * \param fd Il descrittore del client che ha richiesto l'operazione
+ * \param msg Il messaggio ricevuto
+ * \param pl Dati di contesto
+ */
 void handle_get_file(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == GETFILE_OP);
 
@@ -638,7 +704,9 @@ void handle_get_file(long fd, message_t *msg, payload_t *pl) {
   if(clientIdx == -1) {
     /* Un client non connesso ha tentato di inviare un file */
     LOG_WARN("Il client %ld non connesso ha tentato di ricevere un file", fd);
-    int ret = send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso", 0);
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso", NULL);
+    });
     return;
   }
 
@@ -656,7 +724,9 @@ void handle_get_file(long fd, message_t *msg, payload_t *pl) {
   free(file_path);
   if(file == NULL) {
     LOG_WARN("'%s' ha richiesto un file non disponibile", pl->connected_clients[clientIdx].nick);
-    int ret = send_error_message(fd, OP_FAIL, pl, NULL, "Impossibile accedere al file richiesto", 0);
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      send_error_message(fd, OP_FAIL, pl, NULL, "Impossibile accedere al file richiesto", NULL);
+    });
     return;
   }
 
@@ -682,10 +752,21 @@ void handle_get_file(long fd, message_t *msg, payload_t *pl) {
   answer.data.hdr.len = fsize;
   answer.hdr.op = OP_OK;
 
-  int ret = send_handle_disconnect(fd, &answer, pl, NULL);
+  MUTEX_GUARD(pl->connected_clients_mtx, {
+    send_handle_disconnect(fd, &answer, pl, NULL);
+  });
   free(data);
 }
 
+/**
+ * \brief Viene chiamata da \ref handle_get_prev_msgs
+ * 
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
+ * 
+ * \param key Nickname dell'utente di cui ottenere la cronologia
+ * \param value Utente di cui ottenere la cronologia, NULL se non esistente
+ * \param ud Dati di contesto
+ */
 static void handle_get_prev_msgs_cb(const char *key, void *value, void *ud) {
   assert(ud != NULL);
   struct callback_data *data = (struct callback_data*)ud;
@@ -695,7 +776,7 @@ static void handle_get_prev_msgs_cb(const char *key, void *value, void *ud) {
     INCREASE_ERRORS(data->pl);
     LOG_WARN("E' stata richiesta la cronologia dell'utente '%s' non esistente", key);
 
-    int ret = send_error_message(data->fd, OP_NICK_UNKNOWN, data->pl, key, "Nickname non esistente", NULL);
+    send_error_message(data->fd, OP_NICK_UNKNOWN, data->pl, key, "Nickname non esistente", NULL);
   } else {
     LOG_INFO("'%s' ha richiesto la cronologia", key);
 
@@ -734,6 +815,13 @@ static void handle_get_prev_msgs_cb(const char *key, void *value, void *ud) {
   }
 }
 
+/**
+ * \brief Gestisce una richiesta di ricezione della cronologia
+ * 
+ * \param fd Descrittore del client che ha richiesto l'operazione
+ * \param msg Il messaggio ricevuto
+ * \param pl Dati di contesto
+ */
 void handle_get_prev_msgs(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == GETPREVMSGS_OP);
 
@@ -745,7 +833,9 @@ void handle_get_prev_msgs(long fd, message_t *msg, payload_t *pl) {
   if(clientIdx == -1) {
     /* Un client non connesso ha tentato di richiedere la cronologia */
     LOG_WARN("Il client %ld non connesso ha richiesto la cronologia di un utente", fd);
-    int ret = send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso", NULL);
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso", NULL);
+    });
     return;
   }
 
@@ -753,15 +843,19 @@ void handle_get_prev_msgs(long fd, message_t *msg, payload_t *pl) {
   data.fd = fd;
   data.pl = pl;
 
-  int ret = chash_get(pl->registered_clients, msg->hdr.sender, handle_get_prev_msgs_cb, &data);
-  HANDLE_FATAL(ret, "chash_get");
+  MUTEX_GUARD(pl->connected_clients_mtx, {
+    int ret = chash_get(pl->registered_clients, msg->hdr.sender, handle_get_prev_msgs_cb, &data);
+    HANDLE_FATAL(ret, "chash_get");
+  });
 }
 
 void handle_usr_list(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == USRLIST_OP);
 
   LOG_INFO("Il client '%ld' ha richiesto la lista degli utenti connessi", fd);
-  send_user_list(fd, pl, NULL);
+  MUTEX_GUARD(pl->connected_clients_mtx, {
+    send_user_list(fd, pl, NULL);
+  });
 }
 
 /**
@@ -786,6 +880,13 @@ static void handle_unregister_cb(const char *key, void *value, void *ub) {
   }
 }
 
+/**
+ * \brief Gestisce una richiesta di deregistrazione
+ * 
+ * \param fd Il descrittore del client che ha richiesto l'operazione
+ * \param msg Il messaggio ricevuto
+ * \param pl Dati di contesto
+ */
 void handle_unregister(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == UNREGISTER_OP);
 
@@ -796,7 +897,9 @@ void handle_unregister(long fd, message_t *msg, payload_t *pl) {
     /* Tentativo di deregistrazione di un nickname non registrato */
     INCREASE_ERRORS(pl);
     LOG_WARN("Tentativo di deregistrazione di '%s' non esistente", msg->data.hdr.receiver);
-    int ret = send_error_message(fd, OP_NICK_UNKNOWN, pl, msg->hdr.sender, "Nickname non esistente", NULL);
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      send_error_message(fd, OP_NICK_UNKNOWN, pl, msg->hdr.sender, "Nickname non esistente", NULL);
+    });
   } else {
     LOG_INFO("Deregistrazione di '%s'", msg->data.hdr.receiver);
 
@@ -812,8 +915,10 @@ void handle_unregister(long fd, message_t *msg, payload_t *pl) {
     strncpy(ack.data.hdr.receiver, msg->hdr.sender, MAX_NAME_LENGTH);
     ack.hdr.op = OP_OK;
 
-    res = send_handle_disconnect(fd, &ack, pl, 0);
-    HANDLE_FATAL(res, "send_handle_disconnect");
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      res = send_handle_disconnect(fd, &ack, pl, 0);
+      HANDLE_FATAL(res, "send_handle_disconnect");
+    });
     close(fd);
 
     MUTEX_GUARD(pl->stats_mtx, {
@@ -822,6 +927,13 @@ void handle_unregister(long fd, message_t *msg, payload_t *pl) {
   }
 }
 
+/**
+ * \brief Gestisce una richiesta di disconnessione
+ * 
+ * \param fd Il descrittore del client che ha richiesto l'operazione
+ * \param msg Il messaggio ricevuto
+ * \param pl Dati di contesto
+ */
 void handle_disconnect(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == DISCONNECT_OP);
 
@@ -829,6 +941,13 @@ void handle_disconnect(long fd, message_t *msg, payload_t *pl) {
   close(fd);
 }
 
+/**
+ * \brief Gestisce una richiesta di creazione di un gruppo
+ * 
+ * \param fd Il descrittore del client che ha richiesto l'operazione
+ * \param msg Il messaggio ricevuto
+ * \param pl Dati di contesto
+ */
 void handle_create_group(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == CREATEGROUP_OP);
 
@@ -840,7 +959,9 @@ void handle_create_group(long fd, message_t *msg, payload_t *pl) {
   if(clientIdx == -1) {
     /* Un client non connesso ha tentato di creare un gruppo */
     LOG_WARN("Il client %ld non connesso ha tentato di creare un gruppo", fd);
-    int ret = send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso", NULL);
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso", NULL);
+    });
     return;
   }
 
@@ -853,13 +974,17 @@ void handle_create_group(long fd, message_t *msg, payload_t *pl) {
     memset(&ack, 0, sizeof(message_hdr_t));
     ack.op = OP_OK;
 
-    res = send_header_handle_disconnect(fd, &ack, pl, 0);
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      res = send_header_handle_disconnect(fd, &ack, pl, 0);
+    });
     HANDLE_FATAL(res, "send_header_handle_disconnect");
   } else if(res == 1) {
     LOG_WARN("Gruppo %s di %s (%ld) già esistente", msg->data.hdr.receiver, msg->hdr.sender, fd);
     cstrlist_deinit(list);
 
-    int ret = send_error_message(fd, OP_FAIL, pl, NULL, "Gruppo già esistente", NULL);
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      send_error_message(fd, OP_FAIL, pl, NULL, "Gruppo già esistente", NULL);
+    });
   } else {
     HANDLE_FATAL(res, "chash_set_if_empty");
   }
@@ -881,14 +1006,14 @@ static void handle_add_group_cb(const char *key, void *value, void *ud) {
     /* Tentativo di aggiungere un utente ad un gruppo non esistente */
     LOG_WARN("Il client %d ha tentato di aggiungersi ad un gruppo non esistente", cbdata->fd);
 
-    int ret = send_error_message(cbdata->fd, OP_FAIL, cbdata->pl, NULL, "Gruppo inesistente", NULL);
+    send_error_message(cbdata->fd, OP_FAIL, cbdata->pl, NULL, "Gruppo inesistente", NULL);
   } else {
     int res = cstrlist_insert(list, cbdata->data);
     if(res != 0) {
       if(errno == EALREADY) {
         LOG_WARN("Il client %d ha tentato di aggiungersi nuovamente ad un gruppo", cbdata->fd);
 
-        int ret = send_error_message(cbdata->fd, OP_FAIL, cbdata->pl, NULL, "Utente già presente nel gruppo", NULL);
+        send_error_message(cbdata->fd, OP_FAIL, cbdata->pl, NULL, "Utente già presente nel gruppo", NULL);
       } else {
         HANDLE_FATAL(res, "cstrlist_insert");
       }
@@ -897,12 +1022,19 @@ static void handle_add_group_cb(const char *key, void *value, void *ud) {
       memset(&ack, 0, sizeof(message_hdr_t));
       ack.op = OP_OK;
 
-      res = send_header_handle_disconnect(cbdata->fd, &ack, cbdata->pl, 0);
+      send_header_handle_disconnect(cbdata->fd, &ack, cbdata->pl, 0);
       HANDLE_FATAL(res, "send_header_handle_disconnect");
     }
   }
 }
 
+/**
+ * \brief Gestisce una richiesta di aggiunta ad un gruppo
+ * 
+ * \param fd Il descrittore del client che ha richiesto l'operazione
+ * \param msg Il messaggio ricevuto
+ * \param pl Dati di contesto
+ */
 void handle_add_group(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == ADDGROUP_OP);
 
@@ -914,7 +1046,9 @@ void handle_add_group(long fd, message_t *msg, payload_t *pl) {
   if(clientIdx == -1) {
     /* Un client non connesso ha tentato di aggiungersi ad un gruppo */
     LOG_WARN("Il client %ld non connesso ha tentato di aggiungersi ad un gruppo", fd);
-    int ret = send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso", NULL);
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso", NULL);
+    });
     return;
   }
 
@@ -924,13 +1058,18 @@ void handle_add_group(long fd, message_t *msg, payload_t *pl) {
   cbdata.fd = fd;
   cbdata.data = msg->hdr.sender;
 
-  int res = chash_get(pl->groups, msg->data.hdr.receiver, handle_add_group_cb, &cbdata);
-  HANDLE_FATAL(res, "chash_get");
+  MUTEX_GUARD(pl->connected_clients_mtx, {
+    int res = chash_get(pl->groups, msg->data.hdr.receiver, handle_add_group_cb, &cbdata);
+    HANDLE_FATAL(res, "chash_get");
+  });
 }
 
 /**
  * \brief Funzione chiamata da handle_del_group per eseguire la rimozione di un
  *        utente da un gruppo
+ * 
+ * \warning Questa procedura presuppone che il chiamante abbia ottenuto
+ *          il blocco su \ref connected_clients_mtx
  * 
  * \param key Il nome del gruppo da cui è stata tentata la rimozione
  * \param value Il gruppo da cui rimuovere l'utente. NULL se il gruppo non esiste
@@ -944,14 +1083,14 @@ static void handle_del_group_cb(const char *key, void *value, void *ud) {
     /* Tentativo di rimozione di un utente da un gruppo non esistente */
     LOG_WARN("Il client %d ha tentato di rimuoversi da un gruppo non esistente", cbdata->fd);
 
-    int ret = send_error_message(cbdata->fd, OP_FAIL, cbdata->pl, NULL, "Gruppo inesistente", NULL);
+    send_error_message(cbdata->fd, OP_FAIL, cbdata->pl, NULL, "Gruppo inesistente", NULL);
   } else {
     int res = cstrlist_remove(list, cbdata->data);
     if(res != 0) {
       if(errno == ENOENT) {
         LOG_WARN("Il client %d ha tentato di rimuoversi da un gruppo a cui non era iscritto", cbdata->fd);
 
-        int ret = send_error_message(cbdata->fd, OP_FAIL, cbdata->pl, NULL, "Utente non presente nel gruppo", NULL);
+        send_error_message(cbdata->fd, OP_FAIL, cbdata->pl, NULL, "Utente non presente nel gruppo", NULL);
       } else {
         HANDLE_FATAL(res, "cstrlist_remove");
       }
@@ -966,6 +1105,13 @@ static void handle_del_group_cb(const char *key, void *value, void *ud) {
   }
 }
 
+/**
+ * \brief Gestisce una richiesta di eliminazione da un gruppo
+ * 
+ * \param fd Il descrittore del client che ha richiesto l'eliminazione da un gruppo
+ * \param msg Il messaggio ricevuto
+ * \param pl Dati di contesto
+ */
 void handle_del_group(long fd, message_t *msg, payload_t *pl) {
   assert(msg->hdr.op == DELGROUP_OP);
 
@@ -977,7 +1123,9 @@ void handle_del_group(long fd, message_t *msg, payload_t *pl) {
   if(clientIdx == -1) {
     /* Un client non connesso ha tentato di rimuoversi da un gruppo */
     LOG_WARN("Il client %ld non connesso ha tentato di rimuoversi da un gruppo", fd);
-    int ret = send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso", NULL);
+    MUTEX_GUARD(pl->connected_clients_mtx, {
+      send_error_message(fd, OP_FAIL, pl, NULL, "Client non connesso", NULL);
+    });
     return;
   }
 
@@ -987,8 +1135,10 @@ void handle_del_group(long fd, message_t *msg, payload_t *pl) {
   cbdata.fd = fd;
   cbdata.data = msg->hdr.sender;
 
-  int res = chash_get(pl->groups, msg->data.hdr.receiver, handle_del_group_cb, &cbdata);
-  HANDLE_FATAL(res, "chash_get");
+  MUTEX_GUARD(pl->connected_clients_mtx, {
+    int res = chash_get(pl->groups, msg->data.hdr.receiver, handle_del_group_cb, &cbdata);
+    HANDLE_FATAL(res, "chash_get");
+  });
 }
 
 /* Inizializza la lookup-table dei gestori di richieste */
