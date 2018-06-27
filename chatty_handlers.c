@@ -40,6 +40,14 @@ void make_error_message(message_t *msg, op_t error, const char *receiver, const 
   }
 }
 
+static int dequeue_disconnected_descriptors(void *elem, void *ud) {
+  long e = *((long*)elem);
+  long find = *((long*)ud);
+
+  if(e == find) return 1;
+  else return 0;
+}
+
 /**
  * \brief Invia un messaggio ad un client e gestisce automaticamente l'evenutale disconnessione
  * 
@@ -52,9 +60,11 @@ static int send_handle_disconnect(long fd, message_t *msg, payload_t *pl, client
   int ret = sendRequest(fd, msg);
   if(ret == 0 || HAS_DISCONNECTED(ret)) {
     LOG_ERR("%s", strerror(errno));
+    FD_CLR(fd, &(pl->set));
+    close(fd);
+    cqueue_remove_where(pl->ready_sockets, dequeue_disconnected_descriptors, free, &fd);
     disconnect_client(fd, pl, client);
     ret = 0;
-    FD_CLR(fd, &(pl->set));
   } else {
     FD_SET(fd, &(pl->set));
   }
@@ -75,9 +85,11 @@ static int send_handle_disconnect(long fd, message_t *msg, payload_t *pl, client
 static int send_header_handle_disconnect(long fd, message_hdr_t *msg, payload_t *pl, client_descriptor_t *client) {
   int ret = sendHeader(fd, msg);
   if(ret == 0 || HAS_DISCONNECTED(ret)) {
+    FD_CLR(fd, &(pl->set));
+    close(fd);
+    cqueue_remove_where(pl->ready_sockets, dequeue_disconnected_descriptors, free, &fd);
     disconnect_client(fd, pl, client);
     ret = 0;
-    FD_CLR(fd, &(pl->set));
   } else {
     FD_SET(fd, &(pl->set));
   }
@@ -452,21 +464,39 @@ static void route_message_to_group(const char *key, void *value, void *ud) {
 
   int ret, num = cstrlist_get_values(list, &users);
   HANDLE_FATAL(num, "cstrlist_get_values");
-  for(int i = 0; i < num; i++) {
-    ret = chash_get(pkt->pl->registered_clients, users[i], route_message_to_client, pkt);
-    HANDLE_FATAL(ret, "chash_get");
 
-    free(users[i]);
+  int is_in_group = 0;
+  for(int i = 0; i < num; i++) {
+    if(strncmp(pkt->message.hdr.sender, users[i], MAX_NAME_LENGTH) == 0) {
+      is_in_group = 1;
+      break;
+    }
+  }
+
+  if(is_in_group) {
+    for(int i = 0; i < num; i++) {
+      ret = chash_get(pkt->pl->registered_clients, users[i], route_message_to_client, pkt);
+      HANDLE_FATAL(ret, "chash_get");
+      free(users[i]);
+    }
+
+    message_hdr_t ack;
+    memset(&ack, 0, sizeof(message_hdr_t));
+    ack.op = OP_OK;
+
+    ret = send_header_handle_disconnect(pkt->fd, &ack, pkt->pl, NULL);
+    HANDLE_FATAL(ret, "send_header_handle_disconnect");
+  } else {
+    for(int i = 0; i < num; i++) {
+      free(users[i]);
+    }
+
+    ret = send_error_message(pkt->fd, OP_NICK_UNKNOWN, pkt->pl,
+                             pkt->message.hdr.sender, "Client non registrato al gruppo", NULL);
+    HANDLE_FATAL(ret, "send_error_message");
   }
   free(users);
   pkt->sent = 1;
-
-  message_hdr_t ack;
-  memset(&ack, 0, sizeof(message_hdr_t));
-  ack.op = OP_OK;
-
-  ret = send_header_handle_disconnect(pkt->fd, &ack, pkt->pl, NULL);
-  HANDLE_FATAL(ret, "send_header_handle_disconnect");
 }
 
 /**
@@ -975,6 +1005,9 @@ void handle_create_group(long fd, message_t *msg, payload_t *pl) {
     ack.op = OP_OK;
 
     MUTEX_GUARD(pl->connected_clients_mtx, {
+      /* Aggiungo il creatore al gruppo */
+      cstrlist_insert(list, pl->connected_clients[clientIdx].nick);
+
       res = send_header_handle_disconnect(fd, &ack, pl, 0);
     });
     HANDLE_FATAL(res, "send_header_handle_disconnect");

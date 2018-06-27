@@ -24,6 +24,14 @@ typedef struct cqueue cqueue_t;
 typedef void(cqueue_deinitializer)(void *elem);
 
 /**
+ * \brief Tipo della funzione di callback usata per filtrare elementi della coda
+ * 
+ * Viene chiamata quando è necessario eseguire operazioni su alcuni elementi
+ * della coda
+ */
+typedef int (cqueue_filter)(void *elem, void *ud);
+
+/**
  * \brief Inizializza la coda concorrente
  * 
  * \return cqueue_t* NULL se l'inizializzazione non ha avuto successo.
@@ -80,5 +88,19 @@ int cqueue_size(cqueue_t *cq);
  * \return int 0 in caso di successo, -1 ed errno impostato altrimenti.
  */
 int cqueue_clear(cqueue_t *cq, cqueue_deinitializer cb);
+
+/**
+ * \brief Rimuove tutti gli elementi dalla coda che soddisfano la funzione
+ *        \ref cb
+ * 
+ * \param cq La coda su cui eseguire l'operazione
+ * \param filter La funzione di filtraggio
+ * \param deinit La funzione da chiamare su ogni elemento eliminato.
+ *               Se NULL, viene usata free
+ * \param ud Dati da passare alla callback
+ * \return int 0 in caso di successo, -1 ed errno impostato altrimenti
+ */
+int cqueue_remove_where(cqueue_t *cq, cqueue_filter filter,
+                        cqueue_deinitializer deinit, void *ud);
 
 #endif /* CQUEUE_H */
