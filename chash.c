@@ -16,6 +16,10 @@
 /// La dimensione di una hashtable
 #define NUM_HASH_ENTRIES 1024
 
+#define NUM_HASH_CLUSTERS 64
+
+#define HASH_CLUSTER_SIZE ((NUM_HASH_ENTRIES)/(NUM_HASH_CLUSTERS))
+
 #define CHECK_RET if(ret != 0) { \
                     errno = ret; \
                     return -1; \
@@ -28,7 +32,6 @@ typedef struct chash_entry {
   char *key; ///< Chiave del nodo
   void *value; ///< Valore del nodo
   struct chash_entry *next; ///< Nodo successivo
-  pthread_mutex_t mtx; ///< Mutex per l'accesso al nodo
 } chash_entry_t;
 
 /**
@@ -37,7 +40,7 @@ typedef struct chash_entry {
 struct chash {
   chash_entry_t *entries[NUM_HASH_ENTRIES]; ///< Tabella dei nodi
   int numkeys; ///< Numero di nodi attualmente contenuti
-  pthread_rwlock_t lock; ///< Lock R/W per l'accesso alle chiavi
+  pthread_mutex_t mutexes[NUM_HASH_CLUSTERS]; ///< Mutexes per l'accesso ai cluster
 };
 
 /* Da http://www.cse.yorku.ca/~oz/hash.html */
@@ -56,10 +59,12 @@ chash_t *chash_init() {
   if(ht == NULL) return NULL;
 
   memset(ht, 0, sizeof(chash_t));
-  int ret = pthread_rwlock_init(&(ht->lock), NULL);
-  if(ret != 0) {
-    errno = ret;
-    return NULL;
+  for(int i = 0; i < NUM_HASH_CLUSTERS; i++) {
+    int ret = pthread_mutex_init(&(ht->mutexes[i]), NULL);
+    if(ret != 0) {
+      errno = ret;
+      return NULL;
+    }
   }
 
   return ht;
@@ -72,12 +77,13 @@ int chash_get(chash_t *ht, const char *key, chash_get_callback cb, void *ud) {
   }
 
   size_t idx = hash(key);
-  int ret = pthread_rwlock_rdlock(&(ht->lock));
+  pthread_mutex_t *mtx = &(ht->mutexes[idx / HASH_CLUSTER_SIZE]);
+  int ret = pthread_mutex_lock(mtx);
 
   CHECK_RET
 
   if(ht->entries[idx] == NULL) {
-    ret = pthread_rwlock_unlock(&(ht->lock));
+    ret = pthread_mutex_unlock(mtx);
     CHECK_RET
 
     cb(key, NULL, ud);
@@ -89,24 +95,36 @@ int chash_get(chash_t *ht, const char *key, chash_get_callback cb, void *ud) {
     }
 
     if(ptr == NULL) {
-      ret = pthread_rwlock_unlock(&(ht->lock));
+      ret = pthread_mutex_unlock(mtx);
       CHECK_RET
 
       cb(key, NULL, ud);
       return 0;
     } else {
-      ret = pthread_mutex_lock(&(ptr->mtx));
-      CHECK_RET
-
       cb(key, ptr->value, ud);
-      
-      ret = pthread_mutex_unlock(&(ptr->mtx));
-      CHECK_RET
     }
 
   }
-  ret = pthread_rwlock_unlock(&(ht->lock));
+  ret = pthread_mutex_unlock(mtx);
   CHECK_RET
+
+  return 0;
+}
+
+static int chash_lock_all(chash_t *ht) {
+  for(int i = 0; i < NUM_HASH_CLUSTERS; i++) {
+    int ret = pthread_mutex_lock(&(ht->mutexes[i]));
+    CHECK_RET
+  }
+
+  return 0;
+}
+
+static int chash_unlock_all(chash_t *ht) {
+  for(int i = 0; i < NUM_HASH_CLUSTERS; i++) {
+    int ret = pthread_mutex_unlock(&(ht->mutexes[i]));
+    CHECK_RET
+  }
 
   return 0;
 }
@@ -117,27 +135,20 @@ int chash_get_all(chash_t *ht, chash_get_callback cb, void *ud) {
     return -1;
   }
 
-  int ret = pthread_rwlock_rdlock(&(ht->lock));
+  int ret = chash_lock_all(ht);
   CHECK_RET
 
   for(size_t i = 0; i < NUM_HASH_ENTRIES; i++) {
     if(ht->entries[i] != NULL) {
       chash_entry_t *ptr = ht->entries[i];
       while(ptr != NULL) {
-        ret = pthread_mutex_lock(&(ptr->mtx));
-        CHECK_RET
-
         cb(ptr->key, ptr->value, ud);
-        
-        ret = pthread_mutex_unlock(&(ptr->mtx));
-        CHECK_RET
-        
         ptr = ptr->next;
       }
     }
   }
 
-  ret = pthread_rwlock_unlock(&(ht->lock));
+  ret = chash_unlock_all(ht);
   CHECK_RET
   return 0;
 }
@@ -150,7 +161,8 @@ int chash_set(chash_t *table, const char *key, void *value, void **oldValue) {
 
   size_t idx = hash(key);
   size_t keyLen = strlen(key);
-  int ret = pthread_rwlock_wrlock(&(table->lock));
+  pthread_mutex_t *mtx = &(table->mutexes[idx / HASH_CLUSTER_SIZE]);
+  int ret = pthread_mutex_lock(mtx);
   CHECK_RET
   if(table->entries[idx] == NULL) {
     if(value == NULL) {
@@ -158,7 +170,7 @@ int chash_set(chash_t *table, const char *key, void *value, void **oldValue) {
     }
     chash_entry_t *newEntry = calloc(1, sizeof(chash_entry_t));
     if(newEntry == NULL) {
-      ret = pthread_rwlock_unlock(&(table->lock));
+      ret = pthread_mutex_unlock(mtx);
       if(ret != 0) {
         errno = ret;
       }
@@ -167,7 +179,7 @@ int chash_set(chash_t *table, const char *key, void *value, void **oldValue) {
 
     newEntry->key = calloc(keyLen + 1, sizeof(char));
     if(newEntry->key == NULL) {
-      ret = pthread_rwlock_unlock(&(table->lock));
+      ret = pthread_mutex_unlock(mtx);
       if(ret != 0) {
         errno = ret;
       }
@@ -198,14 +210,14 @@ int chash_set(chash_t *table, const char *key, void *value, void **oldValue) {
       
       chash_entry_t *newEntry = malloc(sizeof(chash_entry_t));
       if(newEntry == NULL) {
-        ret = pthread_rwlock_unlock(&(table->lock));
+        ret = pthread_mutex_unlock(mtx);
         CHECK_RET
         return -1;
       }
 
       newEntry->key = calloc(keyLen + 1, sizeof(char));
       if(newEntry->key == NULL) {
-        ret = pthread_rwlock_unlock(&(table->lock));
+        ret = pthread_mutex_unlock(mtx);
         CHECK_RET
         return -1;
       }
@@ -213,8 +225,6 @@ int chash_set(chash_t *table, const char *key, void *value, void **oldValue) {
       strncpy(newEntry->key, key, keyLen);
       newEntry->value = value;
       newEntry->next = table->entries[idx];
-      ret = pthread_mutex_init(&(newEntry->mtx), NULL);
-      CHECK_RET
 
       table->entries[idx] = newEntry;
       table->numkeys++;
@@ -238,7 +248,7 @@ int chash_set(chash_t *table, const char *key, void *value, void **oldValue) {
   }
 
 end:
-  ret = pthread_rwlock_unlock(&(table->lock));
+  ret = pthread_mutex_unlock(mtx);
   CHECK_RET
   return 0;
 }
@@ -251,7 +261,8 @@ int chash_set_if_empty(chash_t *table, const char *key, void *value) {
 
   size_t idx = hash(key);
   size_t keyLen = strlen(key);
-  int ret = pthread_rwlock_wrlock(&(table->lock));
+  pthread_mutex_t *mtx = &(table->mutexes[idx / HASH_CLUSTER_SIZE]);
+  int ret = pthread_mutex_lock(mtx);
   CHECK_RET
   if(table->entries[idx] == NULL) {
     if(value == NULL) {
@@ -259,7 +270,7 @@ int chash_set_if_empty(chash_t *table, const char *key, void *value) {
     }
     chash_entry_t *newEntry = calloc(1, sizeof(chash_entry_t));
     if(newEntry == NULL) {
-      ret = pthread_rwlock_unlock(&(table->lock));
+      ret = pthread_mutex_unlock(mtx);
       if(ret != 0) {
         errno = ret;
       }
@@ -268,7 +279,7 @@ int chash_set_if_empty(chash_t *table, const char *key, void *value) {
 
     newEntry->key = calloc(keyLen + 1, sizeof(char));
     if(newEntry->key == NULL) {
-      ret = pthread_rwlock_unlock(&(table->lock));
+      ret = pthread_mutex_unlock(mtx);
       if(ret != 0) {
         errno = ret;
       }
@@ -294,14 +305,14 @@ int chash_set_if_empty(chash_t *table, const char *key, void *value) {
       
       chash_entry_t *newEntry = calloc(1, sizeof(chash_entry_t));
       if(newEntry == NULL) {
-        ret = pthread_rwlock_unlock(&(table->lock));
+        ret = pthread_mutex_unlock(mtx);
         CHECK_RET
         return -1;
       }
 
       newEntry->key = calloc(keyLen + 1, sizeof(char));
       if(newEntry->key == NULL) {
-        ret = pthread_rwlock_unlock(&(table->lock));
+        ret = pthread_mutex_unlock(mtx);
         CHECK_RET
         return -1;
       }
@@ -309,20 +320,18 @@ int chash_set_if_empty(chash_t *table, const char *key, void *value) {
 
       newEntry->value = value;
       newEntry->next = table->entries[idx];
-      ret = pthread_mutex_init(&(newEntry->mtx), NULL);
-      CHECK_RET
-
+      
       table->entries[idx] = newEntry;
       table->numkeys++;
     } else {
-      ret = pthread_rwlock_unlock(&(table->lock));
+      ret = pthread_mutex_unlock(mtx);
       CHECK_RET
       return 1;
     }
   }
 
 end:
-  ret = pthread_rwlock_unlock(&(table->lock));
+  ret = pthread_mutex_unlock(mtx);
   CHECK_RET
   return 0;
 }
@@ -334,13 +343,7 @@ static int deinit_elem(chash_entry_t *elem, chash_deinitializer cb) {
 
   free(elem->key);
   cb(elem->value);
-  int ret = pthread_mutex_destroy(&(elem->mtx));
-  if(ret != 0) {
-    errno = ret;
-    ret = -1;
-  }
-  free(elem);
-  return ret;
+  return 0;
 }
 
 int chash_deinit(chash_t *table, chash_deinitializer cb) {
@@ -356,12 +359,15 @@ int chash_deinit(chash_t *table, chash_deinitializer cb) {
       }
     }
   }
-  int ret = pthread_rwlock_destroy(&(table->lock));
-  if(ret != 0) {
-    errno = ret;
-    free(table);
-    return -1;
+  for(int i = 0; i < NUM_HASH_CLUSTERS; i++) {
+    int ret = pthread_mutex_destroy(&(table->mutexes[i]));
+    if(ret != 0) {
+      errno = ret;
+      free(table);
+      return -1;
+    }
   }
+  
   
   free(table);
   return 0;
@@ -373,7 +379,7 @@ int chash_keys(chash_t *ht, char ***keys) {
     return -1;
   }
 
-  int ret = pthread_rwlock_rdlock(&(ht->lock));
+  int ret = chash_lock_all(ht);
   CHECK_RET
 
   int numkeys = ht->numkeys;
@@ -399,7 +405,7 @@ int chash_keys(chash_t *ht, char ***keys) {
     }
   }
 
-  ret = pthread_rwlock_unlock(&(ht->lock));
+  ret = chash_unlock_all(ht);
   CHECK_RET
   return numkeys;
 }

@@ -42,12 +42,12 @@ DIR_PATH        = /tmp/chatty
 
 CC		=  gcc
 AR              =  ar
-CFLAGS	        += -std=gnu99 -Wall -pedantic -g -DMAKE_VALGRIND_HAPPY
+CFLAGS	        += -std=c99 -Wall -pedantic -g -DMAKE_VALGRIND_HAPPY -DCSTRLIST_POSIX_COMPLIANT -DCHATTY_VERBOSE
 ARFLAGS         =  rvs
 INCLUDES	= -I.
 LDFLAGS 	= -L.
 OPTFLAGS	= #-O3 
-LIBS            = -pthread -lcfgparse -lcqueue -lchash -lccircbuf
+LIBS            = -pthread -lcfgparse -lcqueue -lchash -lccircbuf -lcstrlist
 
 # aggiungere qui altri targets se necessario
 TARGETS		= chatty        \
@@ -55,7 +55,7 @@ TARGETS		= chatty        \
 
 
 # aggiungere qui i file oggetto da compilare
-OBJECTS		= chatty_handlers.o chatty.o libcfgparse.a libcqueue.a libchash.a libccircbuf.a connections.o
+OBJECTS		= chatty_handlers.o chatty.o libcfgparse.a libcqueue.a libchash.a libccircbuf.a libcstrlist.a connections.o
 
 # aggiungere qui gli altri include 
 INCLUDE_FILES   = connections.h \
@@ -81,6 +81,7 @@ all: $(TARGETS)
 
 # Test valgrind
 memcheck: chatty
+	\mkdir -p $(DIR_PATH)
 	valgrind -v --show-leak-kinds=all --leak-check=full --track-origins=yes ./chatty -f DATA/chatty.conf1
 
 chatty: chatty.o chatty_handlers.o libchatty.a $(INCLUDE_FILES)
@@ -100,6 +101,19 @@ libchash.a: chash.o
 
 libccircbuf.a: ccircbuf.o
 	$(AR) $(ARFLAGS) $@ $^
+
+libcstrlist.a: cstrlist.o
+	$(AR) $(ARFLAGS) $@ $^
+
+# test gruppi
+test6:
+	make cleanall
+	\mkdir -p $(DIR_PATH)
+	make all
+	./chatty -f DATA/chatty.conf1&
+	./testgroups.sh $(UNIX_PATH)
+	killall -QUIT -w chatty
+	@echo "********** Test6 superato!"
 
 ############################ non modificare da qui in poi
 
@@ -183,6 +197,8 @@ consegna:
 	make test4
 	sleep 3
 	make test5
+	sleep 3
+	make test6
 	sleep 3
 	tar -cvf $(TARNAME)_$(CORSO)_chatty.tar $(FILE_DA_CONSEGNARE) 
 	@echo "*** TAR PRONTO $(TARNAME)_$(CORSO)_chatty.tar "

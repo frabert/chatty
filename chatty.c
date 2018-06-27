@@ -21,6 +21,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
+#include <fcntl.h>
 #include <string.h>
 #include <time.h>
 
@@ -359,8 +360,7 @@ int main(int argc, char *argv[]) {
       if (FD_ISSET(i, &readSet)) {
         if (i == fd_sk) {
           /* Connessione da un nuovo client */
-          int newClient;
-          newClient = accept(fd_sk, NULL, 0);
+          int newClient = accept(fd_sk, NULL, 0);
           HANDLE_FATAL(newClient, "accept");
 
           MUTEX_GUARD(payload.stats_mtx, {

@@ -153,7 +153,7 @@ int cqueue_push(cqueue_t *cq, void *v) {
  * \param elem L'elemento estratto
  * \return int 0 in caso di successo, -1 ed errno impostato altrimenti
  */
-static cqueue_pop_nolock(cqueue_t *cq, void **elem) {
+static int cqueue_pop_nolock(cqueue_t *cq, void **elem) {
   while(cq->size == 0) {
     int ret = pthread_cond_wait(&cq->cnd_avail, &cq->mtx);
     CHECK_RET

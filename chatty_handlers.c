@@ -60,10 +60,10 @@ static int send_handle_disconnect(long fd, message_t *msg, payload_t *pl, client
   int ret = sendRequest(fd, msg);
   if(ret == 0 || HAS_DISCONNECTED(ret)) {
     LOG_ERR("%s", strerror(errno));
+    disconnect_client(fd, pl, client);
     FD_CLR(fd, &(pl->set));
     close(fd);
     cqueue_remove_where(pl->ready_sockets, dequeue_disconnected_descriptors, free, &fd);
-    disconnect_client(fd, pl, client);
     ret = 0;
   } else {
     FD_SET(fd, &(pl->set));
@@ -85,10 +85,10 @@ static int send_handle_disconnect(long fd, message_t *msg, payload_t *pl, client
 static int send_header_handle_disconnect(long fd, message_hdr_t *msg, payload_t *pl, client_descriptor_t *client) {
   int ret = sendHeader(fd, msg);
   if(ret == 0 || HAS_DISCONNECTED(ret)) {
+    disconnect_client(fd, pl, client);
     FD_CLR(fd, &(pl->set));
     close(fd);
     cqueue_remove_where(pl->ready_sockets, dequeue_disconnected_descriptors, free, &fd);
-    disconnect_client(fd, pl, client);
     ret = 0;
   } else {
     FD_SET(fd, &(pl->set));
@@ -676,7 +676,7 @@ void handle_post_file(long fd, message_t *msg, payload_t *pl) {
     return;
   }
 
-  size_t file_name_len = 0, dir_path_len = strnlen(pl->cfg->dirName, MAX_PATH_LEN);
+  size_t file_name_len = 0, dir_path_len = strlen(pl->cfg->dirName);
   const char *file_name = strip_file_name(msg->data.buf, &file_name_len);
 
   /* Crea il path completo del file nella directory specificata nelle impostazioni */
@@ -741,7 +741,7 @@ void handle_get_file(long fd, message_t *msg, payload_t *pl) {
   }
 
   size_t file_name_len = msg->data.hdr.len;
-  size_t dir_path_len = strnlen(pl->cfg->dirName, MAX_PATH_LEN);
+  size_t dir_path_len = strlen(pl->cfg->dirName);
 
   /* Crea il path completo del file nella directory specificata nelle impostazioni */
   char *file_path = calloc(file_name_len + dir_path_len + 2, sizeof(char));

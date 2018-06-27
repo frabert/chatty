@@ -9,8 +9,6 @@
 #ifndef ERRMAN_H_
 #define ERRMAN_H_
 
-#define CHATTY_VERBOSE 1
-
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -45,7 +43,7 @@
                           perror(s); \
                           exit(EXIT_FAILURE); }
 
-#if CHATTY_VERBOSE
+#ifdef CHATTY_VERBOSE
 #  define  LOG_ERR(format, ...) fprintf(stderr, "%s:%d - \033[0;31m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)
 #  define LOG_INFO(format, ...) fprintf(stdout, "%s:%d - \033[0;32m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)
 #  define LOG_WARN(format, ...) fprintf(stdout, "%s:%d - \033[0;33m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)

@@ -11,6 +11,22 @@
 #include <string.h>
 #include "cstrlist.h"
 
+#ifdef CSTRLIST_POSIX_COMPLIANT
+typedef pthread_mutex_t mutex_t;
+#  define MUTEX_INIT(x) pthread_mutex_init(&(x), NULL)
+#  define MUTEX_DESTROY(x) pthread_mutex_destroy(&(x))
+#  define MUTEX_READ_LOCK(x) pthread_mutex_lock(&(x))
+#  define MUTEX_WRITE_LOCK(x) pthread_mutex_lock(&(x))
+#  define MUTEX_UNLOCK(x) pthread_mutex_unlock(&(x))
+#else
+typedef pthread_rwlock_t mutex_t;
+#  define MUTEX_INIT(x) pthread_rwlock_init(&(x), NULL)
+#  define MUTEX_DESTROY(x) pthread_rwlock_destroy(&(x))
+#  define MUTEX_READ_LOCK(x) pthread_rwlock_rdlock(&(x))
+#  define MUTEX_WRITE_LOCK(x) pthread_rwlock_wrlock(&(x))
+#  define MUTEX_UNLOCK(x) pthread_rwlock_unlock(&(x))
+#endif
+
 #define CHECK_RET if(ret != 0) { \
                     errno = ret; \
                     return -1; \
@@ -31,14 +47,14 @@ typedef struct node {
 struct cstrlist {
   node_t *head; ///< Primo elemento della lista
   size_t size; ///< Lunghezza della lista
-  pthread_rwlock_t lock; ///< Lock R/W per l'accesso ai valori
+  mutex_t lock; ///< Lock R/W per l'accesso ai valori
 };
 
 cstrlist_t *cstrlist_init() {
   cstrlist_t *list = calloc(1, sizeof(cstrlist_t));
   if(!list) return NULL;
   int ret;
-  if((ret = pthread_rwlock_init(&list->lock, NULL)) != 0) {
+  if((ret = MUTEX_INIT(list->lock)) != 0) {
     goto fail;
   }
 
@@ -68,7 +84,7 @@ int cstrlist_deinit(cstrlist_t *list) {
   freeList(list->head);
   
   int ret = 0;
-  if((ret = pthread_rwlock_destroy(&list->lock)) != 0) {
+  if((ret = MUTEX_DESTROY(list->lock)) != 0) {
     errno = ret;
     ret = -1;
   }
@@ -93,7 +109,7 @@ int cstrlist_insert(cstrlist_t *list, const char *v) {
 
   strncpy(newNode->v, v, len);
 
-  int ret = pthread_rwlock_wrlock(&(list->lock));
+  int ret = MUTEX_WRITE_LOCK(list->lock);
   CHECK_RET
 
   if(list->head == NULL) {
@@ -115,13 +131,13 @@ int cstrlist_insert(cstrlist_t *list, const char *v) {
   
   list->size++;
 
-  ret = pthread_rwlock_unlock(&(list->lock));
+  ret = MUTEX_UNLOCK(list->lock);
   CHECK_RET
 
   return 0;
 
 fail:
-  ret = pthread_rwlock_unlock(&(list->lock));
+  ret = MUTEX_UNLOCK(list->lock);
   CHECK_RET
   return -1;
 }
@@ -132,7 +148,7 @@ int cstrlist_remove(cstrlist_t *list, const char *v) {
     return -1;
   }
 
-  int ret = pthread_rwlock_wrlock(&(list->lock));
+  int ret = MUTEX_WRITE_LOCK(list->lock);
   CHECK_RET
 
   int found = 0;
@@ -169,12 +185,12 @@ int cstrlist_remove(cstrlist_t *list, const char *v) {
     goto fail;
   }
 
-  ret = pthread_rwlock_unlock(&(list->lock));
+  ret = MUTEX_UNLOCK(list->lock);
   CHECK_RET
   return 0;
 
 fail:
-  ret = pthread_rwlock_unlock(&(list->lock));
+  ret = MUTEX_UNLOCK(list->lock);
   CHECK_RET
   return -1;
 }
@@ -185,7 +201,7 @@ int cstrlist_get_values(cstrlist_t *list, char ***dest) {
     return -1;
   }
 
-  int ret = pthread_rwlock_rdlock(&(list->lock));
+  int ret = MUTEX_READ_LOCK(list->lock);
   CHECK_RET
 
   char **buf = calloc(list->size, sizeof(char*));
@@ -194,19 +210,21 @@ int cstrlist_get_values(cstrlist_t *list, char ***dest) {
   node_t *cur = list->head;
 
   for(size_t i = 0; i < list->size; i++) {
-    buf[i] = strdup(cur->v);
+    size_t strsize = strlen(cur->v);
+    buf[i] = calloc(strsize + 1, sizeof(char));
+    strncpy(buf[i], cur->v, strsize);
     if(!buf[i]) goto fail;
     cur = cur->next;
   }
 
   *dest = buf;
 
-  ret = pthread_rwlock_unlock(&(list->lock));
+  ret = MUTEX_UNLOCK(list->lock);
   CHECK_RET
   return list->size;
 
 fail:
-  ret = pthread_rwlock_unlock(&(list->lock));
+  ret = MUTEX_UNLOCK(list->lock);
   CHECK_RET
   return -1;
 }
