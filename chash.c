@@ -343,6 +343,7 @@ static int deinit_elem(chash_entry_t *elem, chash_deinitializer cb) {
 
   free(elem->key);
   cb(elem->value);
+  free(elem);
   return 0;
 }
 
