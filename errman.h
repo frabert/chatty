@@ -43,14 +43,8 @@
                           perror(s); \
                           exit(EXIT_FAILURE); }
 
-#ifdef CHATTY_VERBOSE
-#  define  LOG_ERR(format, ...) fprintf(stderr, "%s:%d - \033[0;31m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)
-#  define LOG_INFO(format, ...) fprintf(stdout, "%s:%d - \033[0;32m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)
-#  define LOG_WARN(format, ...) fprintf(stdout, "%s:%d - \033[0;33m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)
-#else
-#  define  LOG_ERR(format, ...)
-#  define LOG_INFO(format, ...)
-#  define LOG_WARN(format, ...)
-#endif
+#define  LOG_ERR(format, ...) fprintf(stderr, "%s:%d - \033[0;31m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_INFO(format, ...) fprintf(stdout, "%s:%d - \033[0;32m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_WARN(format, ...) fprintf(stdout, "%s:%d - \033[0;33m" format "\033[0m\n", __FILE__, __LINE__, __VA_ARGS__)
 
 #endif /* ERRMAN_H_ */
