@@ -93,6 +93,7 @@ typedef struct {
   long fd; ///< Il descrittore del mittente
   int broadcast; ///< 1 se il messaggio è diretto a più utenti, 0 altrimenti
   int sent; ///< 1 se il messaggio è stato inviato ad un gruppo, 0 altrimenti
+  int *is_connected;
 } message_packet_t;
 
 /**
@@ -116,7 +117,7 @@ void free_client_descriptor(void *ptr);
 /**
  * \brief Funzione di gestione delle richieste
  */
-typedef void(chatty_request_handler)(long fd, message_t *msg, payload_t *pl);
+typedef void(chatty_request_handler)(long fd, message_t *msg, payload_t *pl, int *is_connected);
 
 /**
  * \brief Vettore delle funzioni di gestione delle richieste

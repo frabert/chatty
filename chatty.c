@@ -237,7 +237,10 @@ void *worker_thread(void *data) {
       } else {
         if(msg.hdr.sender[0] != '\0') {
           /* Esegue il gestore di richieste in base all'operazione */
-          chatty_handlers[msg.hdr.op](fd, &msg, pl);
+          int is_connected = 1;
+          chatty_handlers[msg.hdr.op](fd, &msg, pl, &is_connected);
+          if(is_connected)
+            FD_SET(fd, &(pl->set));
         } else {
           /* Messaggio spurio, ignorato */
           LOG_INFO("Messaggio spurio da %ld ignorato", fd);
@@ -386,8 +389,8 @@ int main(int argc, char *argv[]) {
 
           *elem = i;
 
+          FD_CLR(i, &payload.set);
           cqueue_push(payload.ready_sockets, elem);
-          FD_CLR(i, &(payload.set));
         }
       }
     }
