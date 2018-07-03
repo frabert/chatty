@@ -42,7 +42,7 @@ DIR_PATH        = /tmp/chatty
 
 CC		=  gcc
 AR              =  ar
-CFLAGS	        += -std=c99 -Wall -pedantic -g -DMAKE_VALGRIND_HAPPY -DCSTRLIST_POSIX_COMPLIANT -DCHATTY_VERBOSE
+CFLAGS	        += -std=c99 -Wall -pedantic -g -DMAKE_VALGRIND_HAPPY -DCSTRLIST_POSIX_COMPLIANT
 ARFLAGS         =  rvs
 INCLUDES	= -I.
 LDFLAGS 	= -L.
@@ -124,6 +124,7 @@ clean		:
 	rm -f $(TARGETS)
 
 cleanall	: clean
+	-killall -KILL -w chatty -w client
 	\rm -f *.o *~ *.a valgrind_out $(STAT_PATH) $(UNIX_PATH)
 	\rm -fr  $(DIR_PATH)
 
