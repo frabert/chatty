@@ -31,6 +31,7 @@
 \usepackage{subfig} % make it possible to include more than one captioned figure/table in a single float
 \usepackage{hyperref}
 \usepackage[title]{appendix}
+\usepackage[italian]{babel}
 % These packages are all incorporated in the memoir class to one degree or another...
 
 %%% HEADERS & FOOTERS
@@ -92,10 +93,14 @@ I buffer circolari concorrenti sono impiegati nell'implementazione della cronolo
 \subsubsection{\texttt{cfgparse}}
 Questa è una funzione d'appoggio che effettua il parsing dei file di configurazione. L'approccio usato è quello della discesa ricorsiva, e non effettua tokenizzazione preventiva. Similarmente a quanto avviene per \texttt{chash}, l'interfaccia è basata su callback: per ogni valore di configurazione, viene chiamata una funzione passando fra gli argomenti nome e valore letti. La funzione può in ogni momento restituire un valore negativo per segnalare un valore di configurazione non valido e terminare l'esecuzione del parsing.
 
+Non sono state utilizzate precauzioni per rendere l'uso di questa funzione thread-safe, per cui è necessario fare in modo che il buffer su cui questa funzione viene chiamata ad operare non sia condiviso con altri thread.
+
 \subsection{Strutturazione del codice}
 Il grosso del codice è diviso fra i file \texttt{chatty.c} e \texttt{chatty\_handlers.c}. All'interno di \texttt{chatty.c} sono presenti le funzioni di inizializzazione e di spawn dei worker thread, oltre al codice che verrà eseguito dal thread principale. Il fatto che i codici delle varie operazioni richieste dai client siano sequenziali è stato sfruttato per far sì che il codice dei worker thread sia una semplice look-up table formata da un'entrata per ogni operazione possibile. Il corpo delle funzioni che gestiscono le varie operazioni sono definite in \texttt{chatty\_handlers.c}.
 
 L'header \texttt{errman.h} contiene varie macro usate per gestire eseguire operazioni comuni, come bloccare/sbloccare mutex, controllare valori d'uscita ed eseguire logging.
+
+\`{E} stata documentata la maggior parte delle macro, funzioni e strutture dati usate nel progetto, e una descrizione specifica di ognuna di queste può essere trovata nel file \texttt{doxygen.pdf}, generabile invocando \texttt{make docs}.
 
 \section{Funzionamento generale}
 \subsubsection{Interazione intra-processo}
@@ -123,7 +128,9 @@ La gestione della memoria segue questo principio: se una certa risorsa viene all
 \item Windows Subsystem for Linux su Intel \texttt{i5 6200u} (2 core, 4 threads)
 \item Macchina virtuale Xubuntu 14.10 su Intel \texttt{i5 6200u} (2 core, 4 threads)
 \end{itemize}
-\end{appendices}
 
+\section{Test aggiuntivi}
+Sono stati sviluppati test aggiuntivi durante lo sviluppo delle librerie più complesse -- \texttt{chash}, \texttt{cfgparse} e \texttt{ccircbuf}. Possono essere eseguiti con il comando \texttt{make extra\_tests}
+\end{appendices}
 
 \end{document}

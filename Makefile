@@ -10,7 +10,7 @@
 # IMPORTANTE: completare la lista dei file da consegnare
 # 
 FILE_DA_CONSEGNARE=Makefile *.h *.c relazione/relazione.tex \
-			DATA/chatty.conf1 DATA/chatty.conf2 doxygen.pdf relazione.pdf
+			DATA/chatty.conf1 DATA/chatty.conf2 Doxyfile doxygen.pdf relazione.pdf
 # inserire il nome del tarball: es. NinoBixio
 TARNAME=FrancescoBertolaccini
 # inserire il corso di appartenenza: CorsoA oppure CorsoB
@@ -64,7 +64,7 @@ INCLUDE_FILES   = connections.h \
 		  config.h \
 		  cfgparse.h
 
-.PHONY: all clean cleanall test1 test2 test3 test4 test5 consegna memcheck
+.PHONY: all clean cleanall test1 test2 test3 test4 test5 consegna memcheck docs relazione extra_tests
 .SUFFIXES: .c .h
 
 %: %.c
@@ -74,6 +74,21 @@ INCLUDE_FILES   = connections.h \
 	$(CC) $(CFLAGS) $(INCLUDES) $(OPTFLAGS) -c -o $@ $<
 
 all: $(TARGETS)
+
+ccircbuf_tests: ccircbuf_tests.o libccircbuf.a
+	$(CC) $(CFLAGS) $(INCLUDES) $(OPTFLAGS) $(LDFLAGS) -o $@ $^ -pthread -lccircbuf
+
+cfgparse_tests: cfgparse_tests.o libcfgparse.a
+	$(CC) $(CFLAGS) $(INCLUDES) $(OPTFLAGS) $(LDFLAGS) -o $@ $^ -pthread -lcfgparse
+
+chash_tests: chash_tests.o libchash.a
+	$(CC) $(CFLAGS) $(INCLUDES) $(OPTFLAGS) $(LDFLAGS) -o $@ $^ -pthread -lchash
+
+extra_tests: ccircbuf_tests cfgparse_tests chash_tests
+	./ccircbuf_tests
+	./cfgparse_tests
+	./chash_tests
+	echo "Test aggiuntivi svolti con successo"
 
 docs:
 	doxygen
@@ -126,6 +141,7 @@ libchatty.a: $(OBJECTS)
 
 clean		: 
 	rm -f $(TARGETS)
+	rm -f ./*_tests
 
 cleanall	: clean
 	-killall -KILL -w chatty -w client

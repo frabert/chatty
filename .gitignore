@@ -10,3 +10,4 @@ doc/*
 /relazione/*.log
 /relazione/*.gz
 /relazione/*.out
+*_tests

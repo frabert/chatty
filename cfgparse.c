@@ -125,16 +125,16 @@ int skipComment(char **str) {
 
 char *parseIdent(char **str) {
   /* Un identificatore deve iniziare con una lettera maiuscola o minuscola */
-  if((**str >= 65 && **str <= 90) ||
-     (**str >= 97 && **str <= 122)) {
+  if((**str >= 'a' && **str <= 'z') ||
+     (**str >= 'A' && **str <= 'Z')) {
 
     int len = 0;
     char *start = *str;
 
     /* I caratteri successivi al primo possono anche essere cifre */
-    while((**str >= 48 && **str <= 57) ||
-          (**str >= 65 && **str <= 90) ||
-          (**str >= 97 && **str <= 122)) {
+    while((**str >= '0' && **str <= '9') ||
+          (**str >= 'a' && **str <= 'z') ||
+          (**str >= 'A' && **str <= 'Z')) {
       *str = *str + 1;
       len++;
     }
