@@ -1,4 +1,5 @@
 /**
+ *  \file chatty_handlers.c
  *  \author Francesco Bertolaccini 543981
  * 
  *   Si dichiara che il contenuto di questo file e' in ogni sua parte opera
@@ -25,6 +26,7 @@
  * \param msg Messaggio da inizializzare
  * \param error Il tipo di errore
  * \param receiver Nick del destinatario
+ * \param text Testo dell'errore (opzionale)
  */
 void make_error_message(message_t *msg, op_t error, const char *receiver, const char *text) {
   memset(msg, 0, sizeof(message_t));
@@ -43,9 +45,14 @@ void make_error_message(message_t *msg, op_t error, const char *receiver, const 
 /**
  * \brief Invia un messaggio ad un client e gestisce automaticamente l'evenutale disconnessione
  * 
+ * \warning Se questa procedura viene chiamata da una funzione di callback eseguita
+ *          su \ref payload_t.registered_clients, \p client non può essere NULL
+ * 
  * \param fd Descrittore a cui inviare il messaggio
  * \param msg Il messaggio da inviare
  * \param pl Dati di contesto
+ * \param client Il descrittore del client da disconnettere se già estratto
+ *               dalla tabella hash, altrimenti NULL
  * \return int 0 se il client si è disconnesso, -1 in caso di errore (ed errno impostato), altro altrimenti
  */
 static int send_handle_disconnect(long fd, message_t *msg, payload_t *pl, client_descriptor_t *client) {
@@ -62,11 +69,17 @@ static int send_handle_disconnect(long fd, message_t *msg, payload_t *pl, client
 /**
  * \brief Invia un header ad un client e gestisce automaticamente l'evenutale disconnessione
  * 
- * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato
+ *          \ref payload_t.connected_clients_mtx
+ * 
+ * \warning Se questa procedura viene chiamata da una funzione di callback eseguita
+ *          su \ref payload_t.registered_clients, \p client non può essere NULL
  * 
  * \param fd Descrittore a cui inviare l'header
  * \param msg L'header da inviare
  * \param pl Dati di contesto
+ * \param client Il descrittore del client da disconnettere se già estratto
+ *               dalla tabella hash, altrimenti NULL
  * \return int 0 se il client si è disconnesso, -1 in caso di errore (ed errno impostato), altro altrimenti
  */
 static int send_header_handle_disconnect(long fd, message_hdr_t *msg, payload_t *pl, client_descriptor_t *client) {
@@ -114,13 +127,15 @@ static void disconnect_client_cb(const char *key, void *value, void *ud) {
 }
 
 /**
- * \brief Restituisce il client associato al descrittore \ref fd
+ * \brief Restituisce il client associato al descrittore \p fd
  * 
- * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato
+ *          \ref payload_t.connected_clients_mtx
  * 
  * \param fd Il descrittore da cercare
  * \param pl Dati di contesto
- * \return connected_client_t* Il client trovato. NULL se \ref fd non si riferisce ad alcun client connesso
+ * \return connected_client_t* Il client trovato.
+ *                             NULL se \p fd non si riferisce ad alcun client connesso
  */
 static int find_connected_client(long fd, payload_t *pl) {
   for(int i = 0; i < pl->cfg->maxConnections; i++) {
@@ -159,19 +174,30 @@ void disconnect_client(long fd, payload_t *pl, client_descriptor_t *client) {
 /**
  * \brief Invia la lista degli utenti registrati
  * 
- * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato
+ *          \ref payload_t.connected_clients_mtx
+ * 
+ * \warning Se questa procedura viene chiamata da una funzione di callback eseguita
+ *          su \ref payload_t.registered_clients, \p client non può essere NULL
  * 
  * \param fd Il client a cui inviare la lista
  * \param pl Dati di contesto
+ * \param client Il client da disconnettere se già estratto dalla tabella hash,
+ *               altrimenti NULL
+ * 
+ * \return int 0 se \p fd si è disconnesso durante l'operazione, 1 altrimenti
  */
 static int send_user_list(int fd, payload_t *pl, client_descriptor_t *client) {
   char *buf = NULL;
   int c = 0;
 
+  /* Alloca un buffer per mantenere il vettore con i nickname degli utenti
+     registrati */
   buf = calloc(sizeof(char) * (MAX_NAME_LENGTH + 1), pl->cfg->maxConnections);
   for(int i = 0; i < pl->cfg->maxConnections; i++) {
-    if(pl->connected_clients[i].fd > 0 && pl->connected_clients[i].nick[0] != '\0') {
-      strncpy(buf + (MAX_NAME_LENGTH + 1) * c, pl->connected_clients[i].nick, MAX_NAME_LENGTH);
+    connected_client_t client = pl->connected_clients[i];
+    if(client.fd > 0 && client.nick[0] != '\0') {
+      strncpy(buf + (MAX_NAME_LENGTH + 1) * c, client.nick, MAX_NAME_LENGTH);
       c++;
     }
   }
@@ -199,13 +225,14 @@ struct callback_data {
   int fd; ///< Descrittore del client che ha effettutato la richiesta
   payload_t *pl; ///< Dati di contesto
   void *data; ///< Dati supplementari opzionali
-  int *is_connected; 
+  int *is_connected; ///< 1 se il client che ha richiesto l'operazione è ancora connesso
 };
 
 /**
  * \brief Viene utilizzata da \ref handle_connect per associare un socket a un nome utente
  * 
- * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato
+ *          \ref payload_t.connected_clients_mtx
  * 
  * \param key Il nome utente da associare
  * \param value Descrittore del client da associare (\ref client_descriptor_t*)
@@ -228,6 +255,8 @@ static void handle_connect_cb(const char *key, void *value, void *ud) {
     client_descriptor_t *cd = (client_descriptor_t *)value;
     
     cd->fd = fd;
+    /* Cerca il primo slot libero in cui inserire il nuovo client che si è
+       appena connesso */
     for(int i = 0; i < data->pl->cfg->maxConnections; i++) {
       connected_client_t *client = &(data->pl->connected_clients[i]);
       if(client->fd < 0) {
@@ -238,6 +267,7 @@ static void handle_connect_cb(const char *key, void *value, void *ud) {
 
         *(data->is_connected) |= send_user_list(fd, data->pl, cd);
 
+        /* Aggiorna il numero di client online */
         MUTEX_GUARD(data->pl->stats_mtx, {
           data->pl->chatty_stats.nonline++;
         });
@@ -258,8 +288,10 @@ static void handle_connect_cb(const char *key, void *value, void *ud) {
  * \param msg Il messaggio inviato dal client
  * \param fd Il descrittore associato al client
  * \param pl Dati di contesto
+ * \param is_connected Viene impostato a 0 se \p fd si disconnette durante
+ *                     l'operazione
  */
-void handle_connect(long fd, message_t *msg, payload_t *pl, int *is_connected) {
+static void handle_connect(long fd, message_t *msg, payload_t *pl, int *is_connected) {
   assert(msg->hdr.op == CONNECT_OP);
 
   struct callback_data data;
@@ -274,14 +306,16 @@ void handle_connect(long fd, message_t *msg, payload_t *pl, int *is_connected) {
 }
 
 /**
- * \brief Registra il nickname \ref nick
+ * \brief Gestisce una richiesta di registrazione
  * 
  * \param msg Il messaggio ricevuto
  * \param fd Il descrittore a cui inviare il messaggio d'errore
  *           nel caso in cui il nickname fosse già registrato
  * \param pl Informazioni di contesto
+ * \param is_connected Viene impostato a 0 se \p fd si disconnette durante
+ *                     l'operazione
  */
-void handle_register(long fd, message_t *msg, payload_t *pl, int *is_connected) {
+static void handle_register(long fd, message_t *msg, payload_t *pl, int *is_connected) {
   assert(msg->hdr.op == REGISTER_OP);
 
   client_descriptor_t *cd = calloc(1, sizeof(client_descriptor_t));
@@ -290,6 +324,8 @@ void handle_register(long fd, message_t *msg, payload_t *pl, int *is_connected) 
 
   cd->fd = -1;
 
+  /* Inserisce il nick nella hashtable solo se non erano già presenti valori
+    con la stessa chiave */
   int res = chash_set_if_empty(pl->registered_clients, msg->hdr.sender, cd);
   HANDLE_FATAL(res, "chash_set_if_empty");
 
@@ -326,7 +362,8 @@ void handle_register(long fd, message_t *msg, payload_t *pl, int *is_connected) 
 /**
  * \brief Instrada un messaggio verso un client
  * 
- * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato
+ *          \ref payload_t.connected_clients_mtx
  * 
  * \param key Il nome utente del client verso cui instradare il messaggio
  * \param value Puntatore al descrittore del client verso cui instradare
@@ -366,6 +403,7 @@ static void route_message_to_client(const char *key, void *value, void *ud) {
 
     message_t *oldMsg = NULL;
 
+    /* Inserisco il messaggio nella cronologia */
     int ret = ccircbuf_insert(client->message_buffer, msg, (void*)&oldMsg);
     HANDLE_FATAL(ret, "ccircbuf_insert");
 
@@ -388,6 +426,7 @@ static void route_message_to_client(const char *key, void *value, void *ud) {
       ret = send_handle_disconnect(client->fd, &newMsg, pkt->pl, client);
       HANDLE_FATAL(ret, "send_handle_disconnect");
 
+      /* Aggiorno le statistiche */
       MUTEX_GUARD(pkt->pl->stats_mtx, {
         if(msg->hdr.op == POSTTXT_OP) {
           if(ret == 0) {
@@ -414,8 +453,8 @@ static void route_message_to_client(const char *key, void *value, void *ud) {
     }
 
     if(!(pkt->broadcast)) {
-      /* Se inviassi un ack qua, il mittente riceverebbe un ack per ogni utente
-         connesso eligibile alla ricezione del messaggio */
+      /* Se inviassi un ack qua quando broadcast è TRUE, il mittente riceverebbe
+         un ack per ogni utente connesso eligibile alla ricezione del messaggio */
       message_hdr_t ack;
       memset(&ack, 0, sizeof(message_hdr_t));
       ack.op = OP_OK;
@@ -430,7 +469,8 @@ static void route_message_to_client(const char *key, void *value, void *ud) {
 /**
  * \brief Instrada un messaggio verso un gruppo
  * 
- * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato
+ *          \ref payload_t.connected_clients_mtx
  * 
  * \param key Il nome del gruppo verso cui instradare il messaggio
  * \param value Puntatore alla lista degli utenti verso cui instradare
@@ -441,16 +481,20 @@ static void route_message_to_group(const char *key, void *value, void *ud) {
   message_packet_t *pkt = (message_packet_t*)ud;
 
   if(list == NULL) {
-    /* Il gruppo non esiste, ignoriamo */
+    /* Il gruppo non esiste, ignoriamo.
+       L'invio verrà gestito da route_message_to_client */
     return;
   }
 
   pkt->broadcast = 1;
   char **users;
 
+  /* Estraggo i nickname di tutti gli utenti registrati al gruppo */
   int ret, num = cstrlist_get_values(list, &users);
   HANDLE_FATAL(num, "cstrlist_get_values");
 
+  /* Controllo che il mittente faccia parte della lista degli utenti
+     registrati al gruppo */
   int is_in_group = 0;
   for(int i = 0; i < num; i++) {
     if(strncmp(pkt->message.hdr.sender, users[i], MAX_NAME_LENGTH) == 0) {
@@ -493,8 +537,10 @@ static void route_message_to_group(const char *key, void *value, void *ud) {
  * \param fd Il descrittore del client che ha richiesto l'invio
  * \param msg Il messaggio ricevuto
  * \param pl Dati di contesto
+ * \param is_connected Viene impostato a 0 se \p fd si disconnette durante
+ *                     l'operazione
  */
-void handle_post_txt(long fd, message_t *msg, payload_t *pl, int *is_connected) {
+static void handle_post_txt(long fd, message_t *msg, payload_t *pl, int *is_connected) {
   assert(msg->hdr.op == POSTTXT_OP);
 
   int clientIdx = -1;
@@ -545,8 +591,10 @@ void handle_post_txt(long fd, message_t *msg, payload_t *pl, int *is_connected) 
  * \param fd Il descrittore del client che ha richiesto l'operazione
  * \param msg Il messaggio ricevuto
  * \param pl Dati di contesto
+ * \param is_connected Viene impostato a 0 se \p fd si disconnette durante
+ *                     l'operazione
  */
-void handle_post_txt_all(long fd, message_t *msg, payload_t *pl, int *is_connected) {
+static void handle_post_txt_all(long fd, message_t *msg, payload_t *pl, int *is_connected) {
   assert(msg->hdr.op == POSTTXTALL_OP);
 
   int clientIdx = -1;
@@ -578,7 +626,8 @@ void handle_post_txt_all(long fd, message_t *msg, payload_t *pl, int *is_connect
   pkt.pl = pl;
   pkt.message = *msg;
   pkt.fd = fd;
-  pkt.broadcast = 1;
+  pkt.broadcast = 1; /* Evita di inviare un ack
+                        per ogni client che riceve il messaggio */
   pkt.is_connected = is_connected;
 
   MUTEX_GUARD(pl->connected_clients_mtx, {
@@ -629,8 +678,10 @@ static const char *strip_file_name(const char * file_path, size_t *len) {
  * \param fd Il descrittore del client che ha richiesto l'operazione
  * \param msg Il messaggio ricevuto
  * \param pl Dati di contesto
+ * \param is_connected Viene impostato a 0 se \p fd si disconnette durante
+ *                     l'operazione
  */
-void handle_post_file(long fd, message_t *msg, payload_t *pl, int *is_connected) {
+static void handle_post_file(long fd, message_t *msg, payload_t *pl, int *is_connected) {
   assert(msg->hdr.op == POSTFILE_OP);
 
   int clientIdx = -1;
@@ -715,8 +766,10 @@ void handle_post_file(long fd, message_t *msg, payload_t *pl, int *is_connected)
  * \param fd Il descrittore del client che ha richiesto l'operazione
  * \param msg Il messaggio ricevuto
  * \param pl Dati di contesto
+ * \param is_connected Viene impostato a 0 se \p fd si disconnette durante
+ *                     l'operazione
  */
-void handle_get_file(long fd, message_t *msg, payload_t *pl, int *is_connected) {
+static void handle_get_file(long fd, message_t *msg, payload_t *pl, int *is_connected) {
   assert(msg->hdr.op == GETFILE_OP);
 
   int clientIdx = -1;
@@ -753,8 +806,8 @@ void handle_get_file(long fd, message_t *msg, payload_t *pl, int *is_connected) 
     return;
   }
 
-  fseek(file, 0, SEEK_END);
   /* Vado fino in fondo al file per sapere quanto è lungo */
+  fseek(file, 0, SEEK_END);
   long fsize = ftell(file);
   /* Torno all'inizio per leggerlo interamente */
   fseek(file, 0, SEEK_SET);
@@ -784,7 +837,8 @@ void handle_get_file(long fd, message_t *msg, payload_t *pl, int *is_connected) 
 /**
  * \brief Viene chiamata da \ref handle_get_prev_msgs
  * 
- * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato
+ *          \ref payload_t.connected_clients_mtx
  * 
  * \param key Nickname dell'utente di cui ottenere la cronologia
  * \param value Utente di cui ottenere la cronologia, NULL se non esistente
@@ -846,8 +900,10 @@ static void handle_get_prev_msgs_cb(const char *key, void *value, void *ud) {
  * \param fd Descrittore del client che ha richiesto l'operazione
  * \param msg Il messaggio ricevuto
  * \param pl Dati di contesto
+ * \param is_connected Viene impostato a 0 se \p fd si disconnette durante
+ *                     l'operazione
  */
-void handle_get_prev_msgs(long fd, message_t *msg, payload_t *pl, int *is_connected) {
+static void handle_get_prev_msgs(long fd, message_t *msg, payload_t *pl, int *is_connected) {
   assert(msg->hdr.op == GETPREVMSGS_OP);
 
   int clientIdx = -1;
@@ -875,7 +931,16 @@ void handle_get_prev_msgs(long fd, message_t *msg, payload_t *pl, int *is_connec
   });
 }
 
-void handle_usr_list(long fd, message_t *msg, payload_t *pl, int *is_connected) {
+/**
+ * \brief Gestione una richiesta di invio della lista degli utenti registrati
+ * 
+ * \param fd Descrittore del client che ha richiesto l'operazione
+ * \param msg Il messaggio ricevuto
+ * \param pl Dati di contesto
+ * \param is_connected Viene impostato a 0 se \p fd si disconnette durante
+ *                     l'operazione
+ */
+static void handle_usr_list(long fd, message_t *msg, payload_t *pl, int *is_connected) {
   assert(msg->hdr.op == USRLIST_OP);
 
   LOG_INFO("Il client '%ld' ha richiesto la lista degli utenti connessi", fd);
@@ -912,8 +977,10 @@ static void handle_unregister_cb(const char *key, void *value, void *ub) {
  * \param fd Il descrittore del client che ha richiesto l'operazione
  * \param msg Il messaggio ricevuto
  * \param pl Dati di contesto
+ * \param is_connected Viene impostato a 0 se \p fd si disconnette durante
+ *                     l'operazione
  */
-void handle_unregister(long fd, message_t *msg, payload_t *pl, int *is_connected) {
+static void handle_unregister(long fd, message_t *msg, payload_t *pl, int *is_connected) {
   assert(msg->hdr.op == UNREGISTER_OP);
 
   client_descriptor_t *deletedUser;
@@ -961,8 +1028,10 @@ void handle_unregister(long fd, message_t *msg, payload_t *pl, int *is_connected
  * \param fd Il descrittore del client che ha richiesto l'operazione
  * \param msg Il messaggio ricevuto
  * \param pl Dati di contesto
+ * \param is_connected Viene impostato a 0 se \p fd si disconnette durante
+ *                     l'operazione
  */
-void handle_disconnect(long fd, message_t *msg, payload_t *pl, int *is_connected) {
+static void handle_disconnect(long fd, message_t *msg, payload_t *pl, int *is_connected) {
   assert(msg->hdr.op == DISCONNECT_OP);
 
   disconnect_client(fd, pl, NULL);
@@ -976,8 +1045,10 @@ void handle_disconnect(long fd, message_t *msg, payload_t *pl, int *is_connected
  * \param fd Il descrittore del client che ha richiesto l'operazione
  * \param msg Il messaggio ricevuto
  * \param pl Dati di contesto
+ * \param is_connected Viene impostato a 0 se \p fd si disconnette durante
+ *                     l'operazione
  */
-void handle_create_group(long fd, message_t *msg, payload_t *pl, int *is_connected) {
+static void handle_create_group(long fd, message_t *msg, payload_t *pl, int *is_connected) {
   assert(msg->hdr.op == CREATEGROUP_OP);
 
   int clientIdx = -1;
@@ -995,6 +1066,8 @@ void handle_create_group(long fd, message_t *msg, payload_t *pl, int *is_connect
   }
 
   cstrlist_t *list = cstrlist_init();
+
+  /* Controllo che non esistano altri gruppi con lo stesso nome */
   int res = chash_set_if_empty(pl->groups, msg->data.hdr.receiver, list);
   if(res == 0) {
     LOG_INFO("Gruppo %s creato da %s (%ld)", msg->data.hdr.receiver, "", fd);
@@ -1068,8 +1141,10 @@ static void handle_add_group_cb(const char *key, void *value, void *ud) {
  * \param fd Il descrittore del client che ha richiesto l'operazione
  * \param msg Il messaggio ricevuto
  * \param pl Dati di contesto
+ * \param is_connected Viene impostato a 0 se \p fd si disconnette durante
+ *                     l'operazione
  */
-void handle_add_group(long fd, message_t *msg, payload_t *pl, int *is_connected) {
+static void handle_add_group(long fd, message_t *msg, payload_t *pl, int *is_connected) {
   assert(msg->hdr.op == ADDGROUP_OP);
 
   int clientIdx = -1;
@@ -1104,7 +1179,7 @@ void handle_add_group(long fd, message_t *msg, payload_t *pl, int *is_connected)
  *        utente da un gruppo
  * 
  * \warning Questa procedura presuppone che il chiamante abbia ottenuto
- *          il blocco su \ref connected_clients_mtx
+ *          il blocco su \ref payload_t.connected_clients_mtx
  * 
  * \param key Il nome del gruppo da cui è stata tentata la rimozione
  * \param value Il gruppo da cui rimuovere l'utente. NULL se il gruppo non esiste
@@ -1147,8 +1222,10 @@ static void handle_del_group_cb(const char *key, void *value, void *ud) {
  * \param fd Il descrittore del client che ha richiesto l'eliminazione da un gruppo
  * \param msg Il messaggio ricevuto
  * \param pl Dati di contesto
+ * \param is_connected Viene impostato a 0 se \p fd si disconnette durante
+ *                     l'operazione
  */
-void handle_del_group(long fd, message_t *msg, payload_t *pl, int *is_connected) {
+static void handle_del_group(long fd, message_t *msg, payload_t *pl, int *is_connected) {
   assert(msg->hdr.op == DELGROUP_OP);
 
   int clientIdx = -1;

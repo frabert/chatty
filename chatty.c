@@ -36,7 +36,9 @@
 #include "chatty_handlers.h"
 
 /// Consente di sapere se è stato ricevuto un segnale di terminazione
-#define SHOULD_EXIT ((signalStatus == SIGINT) || (signalStatus == SIGQUIT) || (signalStatus == SIGTERM))
+#define SHOULD_EXIT ((signalStatus == SIGINT) || \
+                    (signalStatus == SIGQUIT) || \
+                    (signalStatus == SIGTERM))
 
 /// Controlla la validità di un valore di configurazione
 #define CHECK_VAL(x) if(!(x)) { \
@@ -239,8 +241,10 @@ void *worker_thread(void *data) {
           /* Esegue il gestore di richieste in base all'operazione */
           int is_connected = 1;
           chatty_handlers[msg.hdr.op](fd, &msg, pl, &is_connected);
-          if(is_connected)
-            FD_SET(fd, &(pl->set));
+
+          /* Se il client non si è disconnesso durante l'operazione, va ancora
+             ascoltato */
+          if(is_connected) FD_SET(fd, &(pl->set));
         } else {
           /* Messaggio spurio, ignorato */
           LOG_INFO("Messaggio spurio da %ld ignorato", fd);
@@ -354,7 +358,8 @@ int main(int argc, char *argv[]) {
       /*
        * La select ha fallito per qualche motivo, forse
        * perchè è stata interrotta: se così fosse SHOULD_EXIT adesso
-       * è true e il programma deve terminare, altrimenti ritenta la select
+       * è true e il programma deve terminare, oppure è stata richiesta la
+       * stampa delle statistiche, altrimenti ritenta la select
        */
       continue;
     }

@@ -1,4 +1,5 @@
 /**
+ *  \file cqueue.c
  *  \author Francesco Bertolaccini 543981
  * 
  *   Si dichiara che il contenuto di questo file e' in ogni sua parte opera
@@ -230,38 +231,6 @@ int cqueue_clear(cqueue_t *cq, cqueue_deinitializer cb) {
   cq->head = NULL;
   cq->tail = NULL;
   cq->size = 0;
-
-  ret = pthread_mutex_unlock(&(cq->mtx));
-  CHECK_RET
-
-  return 0;
-}
-
-int cqueue_remove_where(cqueue_t *cq, cqueue_filter filter, cqueue_deinitializer deinit, void *ud) {
-  if(cq == NULL || filter == NULL) {
-    errno = EINVAL;
-    return -1;
-  }
-
-  cqueue_deinitializer *elem_free = deinit == NULL ? free : deinit;
-
-  int ret = pthread_mutex_lock(&(cq->mtx));
-  CHECK_RET
-
-  int size = cq->size;
-
-  for(int i = 0; i < size; i++) {
-    void *elem;
-    ret = cqueue_pop_nolock(cq, &elem);
-    CHECK_RET
-
-    if(filter(elem, ud)) {
-      elem_free(elem);
-    } else {
-      ret = cqueue_push_nolock(cq, elem);
-      CHECK_RET
-    }
-  }
 
   ret = pthread_mutex_unlock(&(cq->mtx));
   CHECK_RET

@@ -1,8 +1,6 @@
 /**
+ *  \file cfgparse.h
  *  \author Francesco Bertolaccini 543981
- * 
- *   Si dichiara che il contenuto di questo file e' in ogni sua parte opera
- *     originale dell'autore
  * 
  *  \brief Utilità di parsing dei file di configurazione
  * 
@@ -11,6 +9,9 @@
  * ad un terzo valore fornito opzionalmente dall'utente
  * 
  * È stato utilizzato un approccio a discesa ricorsiva
+ * 
+ * Si dichiara che il contenuto di questo file e' in ogni sua parte opera
+ *     originale dell'autore
  */
 
 #ifndef CFGPARSE_H_
@@ -21,15 +22,13 @@
  *        ad ogni valore di configurazione trovato
  * 
  * \param key Il nome del campo il cui valore è stato impostato.
- *            NB: NON MEMORIZZARE QUESTO VALORE!
- *            IL PUNTATORE VERRA' DISTRUTTO AL TERMINE DELLA CHIAMATA!
- * 
  * \param value Il valore da assegnare al campo
- *            NB: NON MEMORIZZARE QUESTO VALORE!
- *            IL PUNTATORE VERRA' DISTRUTTO AL TERMINE DELLA CHIAMATA!
  * \param ud Un puntatore fornito dall'utente all'inizio del parsing
  * \return 1 se il parsing deve continuare, 0 se è stato incontrato un errore
  *         e il parsing deve terminare
+ * 
+ * \warning \p key e \p value non devono essere memorizzate, i puntatori
+ *          verranno distrutti al termine della chiamata
  */
 typedef int (*ConfigCallback)(const char *key, const char *value, void *ud);
 

@@ -1,4 +1,5 @@
 /**
+ *  \file chatty_handlers.h
  *  \author Francesco Bertolaccini 543981
  * 
  *   Si dichiara che il contenuto di questo file e' in ogni sua parte opera
@@ -20,17 +21,24 @@
 #include "message.h"
 
 /**
- * \brief Blocca \ref mtx
+ * \brief Blocca \p mtx
+ * 
+ * \param mtx Mutex da bloccare
  */
 #define LOCK(mtx) HANDLE_FATAL(pthread_mutex_lock(&(mtx)), "Bloccando " #mtx)
 
 /**
- * \brief Sblocca \ref mtx
+ * \brief Sblocca \p mtx
+ * 
+ * \param mtx Mutex da sbloccare
  */
 #define UNLOCK(mtx) HANDLE_FATAL(pthread_mutex_unlock(&(mtx)), "Sbloccando " #mtx)
 
 /**
- * \brief Esegue \ref block mantenendo un blocco su \ref mtx
+ * \brief Esegue \p block mantenendo un blocco su \p mtx
+ * 
+ * \param mtx Mutex da bloccare
+ * \param block Blocco da eseguire
  */
 #define MUTEX_GUARD(mtx, block) { LOCK((mtx)); \
                                   { block; } \
@@ -93,13 +101,14 @@ typedef struct {
   long fd; ///< Il descrittore del mittente
   int broadcast; ///< 1 se il messaggio è diretto a più utenti, 0 altrimenti
   int sent; ///< 1 se il messaggio è stato inviato ad un gruppo, 0 altrimenti
-  int *is_connected;
+  int *is_connected; ///< 1 se il mittente del messaggio è ancora connesso
 } message_packet_t;
 
 /**
  * \brief Gestisce la disconnessione di un client
  * 
- * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato
+ *          \ref payload_t.connected_clients_mtx
  * 
  * \param fd Il socket che si è disconnesso
  * \param client Il descrittore del client da disconnetere, se disponibile
@@ -116,6 +125,11 @@ void free_client_descriptor(void *ptr);
 
 /**
  * \brief Funzione di gestione delle richieste
+ * 
+ * \param msg Il messaggio da gestire
+ * \param pl Dati di contesto su cui lavorare
+ * \param is_connected Viene impostato su 0 se \p fd si è disconnesso
+ *                     durante la gestione dell'operazione
  */
 typedef void(chatty_request_handler)(long fd, message_t *msg, payload_t *pl, int *is_connected);
 
@@ -137,7 +151,8 @@ void make_error_message(message_t *msg, op_t error, const char *receiver, const 
 /**
  * \brief Invia un messaggio d'errore ad un client e gestisce automaticamente l'eventuale disconnessione
  * 
- * \warning Questa procedura presuppone che il chiamante abbia bloccato \ref connected_clients_mtx
+ * \warning Questa procedura presuppone che il chiamante abbia bloccato
+ *          \ref payload_t.connected_clients_mtx
  * 
  * \param fd Il descrittore a cui inviare l'errore
  * \param error Il codice d'errore da inviare
@@ -146,6 +161,7 @@ void make_error_message(message_t *msg, op_t error, const char *receiver, const 
  * \param client Il descrittore del client da disconnetere in caso di errori, se disponibile
  * \param text Testo d'errore (opzionale)
  */
-int send_error_message(long fd, op_t error, payload_t *pl, const char *receiver, const char *text, client_descriptor_t *client);
+int send_error_message(long fd, op_t error, payload_t *pl, const char *receiver,
+                       const char *text, client_descriptor_t *client);
 
 #endif

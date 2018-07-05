@@ -28,6 +28,7 @@ struct statistics {
  * \brief Stampa le statistiche nel file passato come argomento
  *
  * \param fout descrittore del file aperto in append.
+ * \param chattyStats le statistiche da stampare
  *
  * \return 0 in caso di successo, -1 in caso di fallimento 
  */

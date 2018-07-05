@@ -1,0 +1,129 @@
+% !TEX TS-program = pdflatex
+% !TEX encoding = UTF-8 Unicode
+
+% This is a simple template for a LaTeX document using the "article" class.
+% See "book", "report", "letter" for other types of document.
+
+\documentclass[11pt]{article} % use larger type; default would be 10pt
+
+\usepackage[utf8]{inputenc} % set input encoding (not needed with XeLaTeX)
+
+%%% Examples of Article customizations
+% These packages are optional, depending whether you want the features they provide.
+% See the LaTeX Companion or other references for full information.
+
+%%% PAGE DIMENSIONS
+\usepackage{geometry} % to change the page dimensions
+\geometry{a4paper} % or letterpaper (US) or a5paper or....
+% \geometry{margin=2in} % for example, change the margins to 2 inches all round
+% \geometry{landscape} % set up the page for landscape
+%   read geometry.pdf for detailed page layout information
+
+\usepackage{graphicx} % support the \includegraphics command and options
+
+% \usepackage[parfill]{parskip} % Activate to begin paragraphs with an empty line rather than an indent
+
+%%% PACKAGES
+\usepackage{booktabs} % for much better looking tables
+\usepackage{array} % for better arrays (eg matrices) in maths
+\usepackage{paralist} % very flexible & customisable lists (eg. enumerate/itemize, etc.)
+\usepackage{verbatim} % adds environment for commenting out blocks of text & for better verbatim
+\usepackage{subfig} % make it possible to include more than one captioned figure/table in a single float
+\usepackage{hyperref}
+\usepackage[title]{appendix}
+% These packages are all incorporated in the memoir class to one degree or another...
+
+%%% HEADERS & FOOTERS
+\usepackage{fancyhdr} % This should be set AFTER setting up the page geometry
+\pagestyle{fancy} % options: empty , plain , fancy
+\renewcommand{\headrulewidth}{0pt} % customise the layout...
+\lhead{}\chead{}\rhead{}
+\lfoot{}\cfoot{\thepage}\rfoot{}
+
+%%% SECTION TITLE APPEARANCE
+\usepackage{sectsty}
+\allsectionsfont{\sffamily\mdseries\upshape} % (See the fntguide.pdf for font help)
+% (This matches ConTeXt defaults)
+
+%%% ToC (table of contents) APPEARANCE
+\usepackage[nottoc,notlof,notlot]{tocbibind} % Put the bibliography in the ToC
+\usepackage[titles,subfigure]{tocloft} % Alter the style of the Table of Contents
+\renewcommand{\cftsecfont}{\rmfamily\mdseries\upshape}
+\renewcommand{\cftsecpagefont}{\rmfamily\mdseries\upshape} % No bold!
+
+%%% END Article customizations
+
+%%% The "real" document content comes below...
+
+\title{Relazione progetto SOL (Chatty)}
+\author{Francesco Bertolaccini}
+%\date{} % Activate to display a given date or no date (if empty),
+         % otherwise the current date is printed 
+
+\begin{document}
+\maketitle
+
+\section{Scelte progettuali}
+Di seguito vengono presentate le varie scelte progettuali effettuate durante la realizzazione del progetto
+
+\subsection{Strutture dati di appoggio e librerie}
+Tutte le strutture dati utilizzate più di una volta nel codice del progetto sono state isolate in librerie collegate staticamente, queste sono \texttt{chash} (Hashtable concorrente), \texttt{cqueue} (Coda concorrente), \texttt{cstrlist} (Lista di stringhe concorrente), \texttt{ccircbuf} (Buffer circolare concorrente) e \texttt{cfgparse} (Parser dei file di configurazione).
+
+\subsubsection{\texttt{chash}}
+Le hashtable concorrenti sono impiegate per memorizzare gli utenti e i gruppi registrati, associando ogni nickname ad un descrittore contenente informazioni riguardo al relativo utente o gruppo. Sono realizzate con metodo delle liste di trabocco, e la dimensione della tabella principale è configurabile a tempo di compilazione. L'algoritmo usato per calcolare il valore hash delle chiavi è stato preso da \href{http://www.cse.yorku.ca/~oz/hash.html}{questa pagina web}.
+
+Per garantire la sicurezza durante gli accessi concorrenti, la tabella è partizionata in ``clusters'', sezioni della tabella sorvegliati da una mutex. Questo significa che due oggetti diversi potrebbero non essere accessibili contemporaneamente se le loro chiavi vengono mappate ad hash contenuti nello stesso cluster. La soluzione alternativa di consentire sempre l'accesso ad oggetti con chiavi separate avrebbe richiesto l'uso di una mutex per ogni oggetto presente nella hashtable, ed è stata ritenuta eccessivamente pesante.
+
+La misura impiegata per ridurre la possibilità di deadlock è quella di consentire tramite l'accesso alla tabella hash solo tramite funzioni di callback: \texttt{chash\_get} consente di accedere ad un oggetto nella hashtable attraverso una funzione fornita dall'utente che viene chiamata passando fra gli argomenti il valore presente nella tabella (se trovato). Durante l'esecuzione della funzione di callback, la mutex relativa al cluster interessato rimane bloccata, e non è possibile accedervi fino al termine.
+
+In maniera simile, \texttt{chash\_get\_all} chiama ripetutamente una funzione fornita dall'utente su tutti gli elementi presenti nella tabella hash. In questo caso, \textit{tutti} i cluster vengono bloccati fino al termine dell'esecuzione dell'ultima funzione.
+
+Unica accortezza necessaria all'uso di questa interfaccia è quella di non chiamare mai altre funzioni relative alla stessa tabella hash dall'interno di una callback, pena il blocco dell'esecuzione.
+
+\subsubsection{\texttt{cqueue}}
+Le code concorrenti sono usate per suddividere il carico di gestione dei client connessi fra i vari thread presenti e per sincronizzare l'uscita. Sono realizzate tramite liste collegate, e l'accesso concorrente è gestito tramite una mutex ed una variabile di condizionamento.
+
+\subsubsection{\texttt{cstrlist}}
+Le liste di stringhe concorrenti sono usate per memorizzare i membri di ogni gruppo. Sono state realizzate due implementazioni diverse di questa struttura: la prima usa lock read/write per consentire a più thread di leggere i dati presenti all'interno, bloccando i tentativi di scrittura. Questi lock (\texttt{pthread\_rwlock\_t}) non sono presenti nello standard POSIX, ed è necessario passare l'argomento \texttt{-std=gnu99} a GCC per poter compilare. Per questo, è stata realizzata una soluzione alternativa che utilizza solo mutex standard, ma non consente l'accesso concorrente a più lettori.
+
+\subsubsection{\texttt{ccircbuf}}
+I buffer circolari concorrenti sono impiegati nell'implementazione della cronologia dei messaggi ricevuti da ciascun utente. Hanno una lunghezza configurabile durante la creazione a tempo d'esecuzione, e sono protetti da una singola mutex.
+
+\subsubsection{\texttt{cfgparse}}
+Questa è una funzione d'appoggio che effettua il parsing dei file di configurazione. L'approccio usato è quello della discesa ricorsiva, e non effettua tokenizzazione preventiva. Similarmente a quanto avviene per \texttt{chash}, l'interfaccia è basata su callback: per ogni valore di configurazione, viene chiamata una funzione passando fra gli argomenti nome e valore letti. La funzione può in ogni momento restituire un valore negativo per segnalare un valore di configurazione non valido e terminare l'esecuzione del parsing.
+
+\subsection{Strutturazione del codice}
+Il grosso del codice è diviso fra i file \texttt{chatty.c} e \texttt{chatty\_handlers.c}. All'interno di \texttt{chatty.c} sono presenti le funzioni di inizializzazione e di spawn dei worker thread, oltre al codice che verrà eseguito dal thread principale. Il fatto che i codici delle varie operazioni richieste dai client siano sequenziali è stato sfruttato per far sì che il codice dei worker thread sia una semplice look-up table formata da un'entrata per ogni operazione possibile. Il corpo delle funzioni che gestiscono le varie operazioni sono definite in \texttt{chatty\_handlers.c}.
+
+L'header \texttt{errman.h} contiene varie macro usate per gestire eseguire operazioni comuni, come bloccare/sbloccare mutex, controllare valori d'uscita ed eseguire logging.
+
+\section{Funzionamento generale}
+\subsubsection{Interazione intra-processo}
+Il thread principale ha il compito di leggere il file di configurazione fornito e di inizializzare le strutture dati. Dopodichè, effettua lo spawn di un numero variabile di thread il cui compito consiste nell'estrarre un valore da una coda di interi (rappresentanti file descriptors) condivisa fra tutti i thread. I valori vengono immessi in coda dal thread principale ogni qualvolta che un client connesso desidera comunicare con il server. A questo punto, il primo thread libero estrae il valore dalla coda e legge i dati in arrivo dal client corrispondente, ed esegue l'handler relativo al comando ricevuto. Gli worker threads non comunicano mai fra di loro, e l'unica interazione con il thread principale è attraverso la coda e la struttura delle statistiche.
+
+\subsubsection{Gestione dei segnali e terminazione}
+L'handler dei segnali si limita ad impostare una variabile globale, che verrà letta dal thread principale. Questo deciderà le successive azioni in base al valore di questa variabile: se il valore è \texttt{SIGUSR1}, stampa le statistiche, se invece è uno fra \texttt{SIGTERM}, \texttt{SIGQUIT} o \texttt{SIGINT} verrà iniziata la procedura di terminazione.
+
+La procedura di terminazione avviene come di seguito:
+\begin{enumerate}
+\item Il thread principale svuota la coda dei descrittori di file
+\item Viene immesso il valore speciale \texttt{-1} nella coda, il thread principale ora è in attesa della terminazione di tutti gli worker threads
+\item Ogni worker thread che estrae \texttt{-1} dalla coda termina le sue operazioni e reimmette il valore in coda per consentire la terminazione ai thread rimanenti
+\item Quando tutti i thread hanno terminato, viene effettuata la pulizia delle risorse allocate e il processo termina
+\end{enumerate}
+
+\subsubsection{Gestione della memoria}
+La gestione della memoria segue questo principio: se una certa risorsa viene allocata da una funzione \texttt{A}, sarà di nuovo \texttt{A} a liberarla, ogni funzione che si ritrovi ad operare su risorse non allocate da essa non deve mai liberarle. Questo significa, ad esempio, che tutte le risorse condivise sono allocate e deallocate dalla funzione \texttt{main}.
+
+\begin{appendices}
+\section{Macchine su cui è stato testato il programma}
+\begin{itemize}
+\item Ubuntu 18.04 su AMD \texttt{FX-6350} (3 core, 6 threads)
+\item Windows Subsystem for Linux su AMD \texttt{FX-6350} (3 core, 6 threads)
+\item Windows Subsystem for Linux su Intel \texttt{i5 6200u} (2 core, 4 threads)
+\item Macchina virtuale Xubuntu 14.10 su Intel \texttt{i5 6200u} (2 core, 4 threads)
+\end{itemize}
+\end{appendices}
+
+
+\end{document}

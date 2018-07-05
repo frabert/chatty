@@ -9,8 +9,8 @@
 ##########################################################
 # IMPORTANTE: completare la lista dei file da consegnare
 # 
-FILE_DA_CONSEGNARE=Makefile *.h *.c \
-			DATA/chatty.conf1 DATA/chatty.conf2
+FILE_DA_CONSEGNARE=Makefile *.h *.c relazione/relazione.tex \
+			DATA/chatty.conf1 DATA/chatty.conf2 doxygen.pdf relazione.pdf
 # inserire il nome del tarball: es. NinoBixio
 TARNAME=FrancescoBertolaccini
 # inserire il corso di appartenenza: CorsoA oppure CorsoB
@@ -53,7 +53,6 @@ LIBS            = -pthread -lcfgparse -lcqueue -lchash -lccircbuf -lcstrlist
 TARGETS		= chatty        \
 		  client
 
-
 # aggiungere qui i file oggetto da compilare
 OBJECTS		= chatty_handlers.o chatty.o libcfgparse.a libcqueue.a libchash.a libccircbuf.a libcstrlist.a connections.o
 
@@ -65,9 +64,6 @@ INCLUDE_FILES   = connections.h \
 		  config.h \
 		  cfgparse.h
 
-
-
-
 .PHONY: all clean cleanall test1 test2 test3 test4 test5 consegna memcheck
 .SUFFIXES: .c .h
 
@@ -78,6 +74,14 @@ INCLUDE_FILES   = connections.h \
 	$(CC) $(CFLAGS) $(INCLUDES) $(OPTFLAGS) -c -o $@ $<
 
 all: $(TARGETS)
+
+docs:
+	doxygen
+	$(MAKE) -C doc/latex
+	mv doc/latex/refman.pdf doxygen.pdf
+
+relazione:
+	$(MAKE) -C relazione
 
 # Test valgrind
 memcheck: chatty
@@ -188,7 +192,7 @@ test5:
 	@echo "********** Test5 superato!"
 
 # target per la consegna
-consegna:
+consegna: relazione docs
 	make test1
 	sleep 3
 	make test2

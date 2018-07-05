@@ -1,4 +1,5 @@
 /**
+ *  \file errman.h
  *  \author Francesco Bertolaccini 543981
  * 
  *   Si dichiara che il contenuto di questo file e' in ogni sua parte opera
@@ -14,7 +15,7 @@
 #include <stdlib.h>
 
 /**
- * \brief Restituisce true se x è un errore relativo alla disconnessione
+ * \brief Restituisce true se \p x è un errore relativo alla disconnessione
  * di un client
  */
 #define HAS_DISCONNECTED(x) ((x) < 0 && (errno == EPIPE \
@@ -24,7 +25,7 @@
                                       || errno == EBADF))
 
 /**
- * \brief Se x vale < 0, il programma termina con un messaggio d'errore
+ * \brief Se \p x vale < 0, il programma termina con un messaggio d'errore
  * 
  * Il messaggio d'errore conterrà anche un riferimento a dove è stato generato
  */
@@ -34,7 +35,7 @@
                             exit(EXIT_FAILURE); }
 
 /**
- * \brief Se x è NULL, il programma termina con un messaggio d'errore
+ * \brief Se \p x è NULL, il programma termina con un messaggio d'errore
  * 
  * Il messaggio d'errore conterrà anche un riferimento a dove è stato generato
  */

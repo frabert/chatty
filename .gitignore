@@ -4,3 +4,9 @@ chatty
 client
 doc/*
 .vscode/*
+*.tar
+*.pdf
+/relazione/*.aux
+/relazione/*.log
+/relazione/*.gz
+/relazione/*.out

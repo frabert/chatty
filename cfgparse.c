@@ -1,4 +1,5 @@
 /**
+ *  \file cfgparse.c
  *  \author Francesco Bertolaccini 543981
  * 
  *  Si dichiara che il contenuto di questo file e' in ogni sua parte opera
@@ -10,25 +11,39 @@
 #include <errno.h>
 #include "cfgparse.h"
 
-/** Ignora una sequenza di caratteri vuoti. Se trovata, restituisce 1, altrimenti 0 */
+/**
+ * \brief Ignora una sequenza di caratteri vuoti. Se trovata, restituisce 1, altrimenti 0
+ */
 int skipWhitespace(char **str);
 
-/** Ignora un commento. Se trovato, restituisce 1, altrimenti 0 */
+/**
+ * \brief Ignora un commento. Se trovato, restituisce 1, altrimenti 0
+ */
 int skipComment(char **str);
 
-/** Supera un carattere newline. Se trovato restituisce 1, altrimenti 0 */
+/**
+ * \brief Supera un carattere newline. Se trovato restituisce 1, altrimenti 0
+ */
 int parseEOL(char **str);
 
-/** Restituisce 1 se alla fine della stringa. Altrimenti 0 */
+/**
+ * \brief Restituisce 1 se alla fine della stringa. Altrimenti 0
+ */
 int parseEOF(char **str);
 
-/** Legge un identificatore e lo restituisce. Se non viene trovato, restituisce NULL */
+/**
+ * \brief Legge un identificatore e lo restituisce. Se non viene trovato, restituisce NULL
+ */
 char *parseIdent(char **str);
 
-/** Legge un valore e lo restituisce. Se non viene trovato, restituisce NULL */
+/**
+ * \brief Legge un valore e lo restituisce. Se non viene trovato, restituisce NULL
+ */
 char *parseValue(char **str);
 
-/** Legge una stringa e la restituisce. Se non viene trovata, restituisce NULL */
+/**
+ * \brief Legge una stringa e la restituisce. Se non viene trovata, restituisce NULL
+ */
 int parseString(char **str, char **out);
 
 int cfg_parse(char *str, ConfigCallback cb, void *userdata) {

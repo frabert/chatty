@@ -1,4 +1,5 @@
 /**
+ *  \file chash.c
  *  \author Francesco Bertolaccini 543981
  * 
  *   Si dichiara che il contenuto di questo file e' in ogni sua parte opera
