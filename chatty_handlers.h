@@ -80,6 +80,7 @@ typedef struct {
  */
 typedef struct {
   fd_set set; ///< Bitset dei descrittori su cui ascoltare
+  pthread_mutex_t set_mtx; ///< Mutex per l'accesso al bitset dei descrittori
 
   cqueue_t *ready_sockets; ///< Coda dei socket pronti (tipo: int)
   chash_t *registered_clients; ///< Tabella degli utenti registrati (tipo: \ref client_descriptor_t*)

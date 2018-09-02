@@ -242,9 +242,11 @@ void *worker_thread(void *data) {
           int is_connected = 1;
           chatty_handlers[msg.hdr.op](fd, &msg, pl, &is_connected);
 
-          /* Se il client non si è disconnesso durante l'operazione, va ancora
-             ascoltato */
-          if(is_connected) FD_SET(fd, &(pl->set));
+          MUTEX_GUARD(pl->set_mtx, {
+            /* Se il client non si è disconnesso durante l'operazione, va ancora
+               ascoltato */
+            if(is_connected) FD_SET(fd, &(pl->set));
+          });
         } else {
           /* Messaggio spurio, ignorato */
           LOG_INFO("Messaggio spurio da %ld ignorato", fd);
@@ -296,6 +298,7 @@ int main(int argc, char *argv[]) {
 
   HANDLE_FATAL(pthread_mutex_init(&(payload.connected_clients_mtx), NULL), "pthread_mutex_init");
   HANDLE_FATAL(pthread_mutex_init(&(payload.stats_mtx), NULL), "pthread_mutex_init");
+  HANDLE_FATAL(pthread_mutex_init(&(payload.set_mtx), NULL), "pthread_mutex_init");
 
   payload.connected_clients = calloc(cfg.maxConnections, sizeof(connected_client_t));
   HANDLE_NULL(payload.connected_clients, "calloc");
@@ -351,7 +354,9 @@ int main(int argc, char *argv[]) {
     timeout.tv_sec = 0;
     timeout.tv_usec = 10000;
 
-    readSet = payload.set;
+    MUTEX_GUARD(payload.set_mtx, {
+      readSet = payload.set;
+    });
 
     res = select(FD_SETSIZE, &readSet, NULL, NULL, &timeout);
     if(res < 0) {
@@ -393,8 +398,9 @@ int main(int argc, char *argv[]) {
           HANDLE_NULL(elem, "calloc");
 
           *elem = i;
-
-          FD_CLR(i, &payload.set);
+          MUTEX_GUARD(payload.set, {
+            FD_CLR(i, &payload.set);
+          });
           cqueue_push(payload.ready_sockets, elem);
         }
       }
@@ -426,6 +432,7 @@ int main(int argc, char *argv[]) {
   HANDLE_FATAL(chash_deinit(payload.groups, free_group), "chash_deinit");
   HANDLE_FATAL(cqueue_deinit(payload.ready_sockets, free), "cqueue_deinit");
   HANDLE_FATAL(pthread_mutex_destroy(&(payload.stats_mtx)), "pthread_mutex_destroy");
+  HANDLE_FATAL(pthread_mutex_destroy(&(payload.set_mtx)), "pthread_mutex_destroy");
 
   free(payload.connected_clients);
   printf("fatto. Bye!\n");
